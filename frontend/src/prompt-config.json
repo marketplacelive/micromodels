@@ -1,0 +1,8 @@
+{
+  "SYSTEM_PROMPT": "You are a bot helping a sales officer to execute his daily tasks. Provide response on the specific questions asked. If the answer is not available, respond with 'Information not available'.",
+  "UNDER_PERFORMING_OPPORTUNITIES_PROMPT": "Provide a list of underperforming opportunities identified from the sales discussions that have occurred between Company Dealstream and various other companies",
+  "ALL_OPPORTUNITIES_PROMPT": "List all opportunities in Dealstream",
+  "LIST_PAIN_POINTS_PROMPT": "What are the pain points in {opportunity} discussions, provide maximum 5 points in short sentence in json array with the following format ['Value 1', 'Value 2',...]",
+  "LIST_SUGGESTED_SOLUTION_PROMPT": "List the suggested solutions for the pain points {checkList} in {opportunity} in short sentence in json array with the following format ```['Value 1', 'Value 2',...]```",
+  "MODEL_NAME": "model name comes here"
+}

@@ -1,0 +1,141 @@
+@import "../../../src/styles/variables.scss";
+@import "../../../src/styles/fonts.scss";
+
+.ps-wrapper {
+  background-color: $background-blue-3;
+  height: calc(100vh - 5.04rem);
+  width: 100%;
+  border-left: 1px solid $background-blue-4;
+
+  .ps-header {
+    padding: 1.5rem 2.5rem 2rem 1.5rem;
+
+    .pro-pic {
+      width: 3.5rem;
+      height: 3.5rem;
+      padding-right: .5rem;
+    }
+
+    .employee-wrap {
+
+      .employee-tile {
+        width: 1.75rem;
+        height: 1.75rem;
+        border: 2px solid $secondary-cyan;
+        border-radius: 2rem;
+
+        img {
+          width: 2rem;
+          height: 2rem;
+        }
+      }
+    }
+
+    .user-name {
+      @include nunito-bold();
+      font-size: 1.125rem;
+      color: $primary-text;
+    }
+  }
+
+  .pro-detail-icon {
+    padding-right: .5rem;
+  }
+
+  .pro-detail-text {
+    font-size: .75rem;
+    color: $secondary-text;
+  }
+}
+
+.user-navbar {
+  padding: 0 2.5rem 0 1.5rem;
+  border-bottom: 1px solid $background-blue-4;
+
+  .user-nav-icon {
+    @include nunito-bold();
+    color: $text-grey-3;
+    text-decoration: none;
+    padding: .4rem 1rem;
+    margin: 0 1rem;
+    border-bottom: 2px solid $background-blue-3;
+    font-size: .8rem;
+
+    &:hover {
+      transition: .2s all;
+      color: $secondary-cyan;
+    }
+  }
+
+  .user-nav-icon.active {
+    @include nunito-extrabold();
+    border-bottom: 2px solid $secondary-cyan;
+    color: $secondary-cyan;
+  }
+}
+
+.info-wrap {
+  padding: 1.5rem 2.5rem 1.5rem 1.5rem;
+
+  .user-details {
+    flex-wrap: wrap;
+
+    .user-detail-tile {
+      @include nunito-regular();
+      min-width: max-content;
+      padding-bottom: 1rem;
+      font-size: .875rem;
+      color: $secondary-text;
+
+      span {
+        padding: 0 2rem 0 0.5rem;
+      }
+    }
+  }
+
+  .payment-details {
+    .payment-heading {
+      padding: 1rem 0 1rem 0;
+      color: $primary-text;
+      font-size: 1.125rem;
+    }
+    .payment-tile {
+      display: flex;
+      background-color: $white;
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+
+      .side-indicator {
+        width: 3px;
+        background: $secondary-cyan;
+        min-height: max-content;
+        margin-right: 1rem;
+      }
+
+      .tx-details {
+        p {
+          @include nunito-semibold();
+          margin: 0;
+          color: $secondary-text;
+          font-size: 1rem;
+
+        }
+
+        span {
+          @include nunito-regular();
+          color: $text-grey-4;
+          font-size: .75rem;
+        }
+      }
+
+      .tx-amount {
+        @include nunito-extrabold();
+        color: $primary-text;
+
+      }
+    }
+  }
+}

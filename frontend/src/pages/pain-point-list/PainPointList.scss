@@ -1,0 +1,169 @@
+@import "../../../src/styles/variables.scss";
+@import "../../../src/styles/fonts.scss";
+
+.pain-list-page {
+  border-top: 1px solid $border-grey-2;
+  @include nunito-regular();
+
+  .pain-list-wrap {
+    padding: 1.5rem 2.5rem;
+
+    .proj-name-wrap {
+      @include nunito-semibold();
+      color: $secondary-text;
+      padding-bottom: 2rem;
+
+      img {
+        padding-right: 1rem;
+        cursor: pointer;
+        width: 2.25rem;
+        height: 2.25rem;
+      }
+    }
+
+    .proj-detail-wrap {
+      justify-content: space-between;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid $border-grey-2;
+
+      .proj-detail {
+        max-width: 15rem;
+
+        .proj-detail-label {
+          @include nunito-regular();
+          font-size: 0.875rem;
+          color: $text-grey-2;
+        }
+
+        .proj-detail-cont {
+          @include nunito-semibold();
+          color: $primary-text;
+        }
+      }
+    }
+  }
+
+  .CRM-button {
+    @include nunito-bold();
+    text-transform: none;
+    font-size: 0.875rem;
+    background-color: $primary-blue;
+    border-radius: 0.75rem;
+    color: $white;
+    padding: 0 0.85rem;
+
+    &:hover {
+      background-color: $primary-blue-hover;
+    }
+
+    img {
+      padding-right: 0.5rem;
+    }
+  }
+
+  .MuiTypography-root {
+    @include nunito-regular();
+  }
+
+  .MuiList-root {
+    padding: 0;
+
+    .MuiListItem-root {
+      border: 1px solid $border-grey-2;
+      border-radius: 0.75rem;
+      margin-bottom: 1rem;
+
+      .MuiButtonBase-root {
+        padding: 0.5rem 1.25rem;
+
+        .MuiListItemIcon-root {
+          min-width: 0;
+          width: max-content;
+
+          .MuiButtonBase-root {
+            padding: .5rem;
+
+            .MuiSvgIcon-root {
+              width: 1.5rem;
+              height: 1.5rem;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+.pain-point-wrap {
+  margin-top: 2rem;
+
+  .point-wrap {
+    h4 {
+      font-size: 1.125rem;
+      color: $primary-text;
+      margin: 0 0 1rem 0;
+    }
+
+    .point-text {
+      color: $secondary-text;
+    }
+  }
+
+  .solution-wrap {
+    padding-left: 3rem;
+
+    .solution-heading-wrap {
+      margin-bottom: 1rem;
+
+      span {
+        @include nunito-bold();
+        color: $secondary-cyan;
+      }
+
+      img {
+        padding-right: 1rem;
+        width: 1.5rem;
+        height: 1.5rem;
+      }
+    }
+
+    .empty-box {
+      background-color: $background-grey-1;
+      color: $text-grey-3;
+      padding: 1rem;
+      border-radius: 0.75rem;
+    }
+
+    .solution-list {
+      max-height: calc(100vh - 21.9rem);
+      overflow-y: auto;
+      padding-right: .75rem;
+
+      &::-webkit-scrollbar-track {
+        background-color: $background-grey-1;
+        border-radius: 1rem;
+      }
+
+      &::-webkit-scrollbar {
+        width: .25rem;
+        background-color: $background-grey-1;
+        border-radius: .25rem;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background-color: $primary-blue;
+        border-radius: .25rem;
+      }
+    }
+
+    .solution-tile {
+      border: 1px solid $border-grey-2;
+      border-radius: .75rem;
+      justify-content: space-between;
+      padding: 0.75rem;
+      align-items: center;
+      margin-bottom: 1rem;
+      color: $secondary-text;
+    }
+  }
+}
