@@ -1,4 +1,5 @@
-This dataset consists of 100 variations of pain points of 6 different opportunities, All opportunities repeated 10 times, overview of the discussions repeated 10 times between each opportunity, and discussion overview between Siemens and DealStream on specific dates.
+This dataset contains 100 variations of pain points of 6 different opportunities, All opportunities repeated 10 times, and overview of the discussions repeated 10 times between each opportunity. Discussion overview between Siemens and DealStream on specific dates, discussion overview between DealStream and each opportunities on specific dates.
+
 
 Structure
 
@@ -9,9 +10,6 @@ Structure
 
 Created 10 variations of each opportunity by varying the user content and keeping the assistant content the same. Repeated 10 variations for all opportunities.
 
- ......
- ......
- ......
  
 ```
 {"messages":[{"role":"system","content":"You are a bot, helping a sales officer to execute his daily tasks."},{"role":"user","content":"Can you list all the opportunities DealStream is currently exploring?"},{"role":"assistant","content":"Virgin Media, Dell, Phizer Pharmaceuticals, Tescos Plc, Oracle, Rolls Royce Plc, British Airways Plc, Siemens Plc, Vodafone Plc, Walmart Inc, Ericson Plc, American Airlines Inc"}]}
@@ -19,18 +17,14 @@ Created 10 variations of each opportunity by varying the user content and keepin
 List opportunity training
 Repeated 10 variations of the user content and assistant content kept the same.
 
-.....
-.....
-.....
-
 ```
 {"messages":[{"role":"system","content":"You are a bot, helping a sales officer to execute his daily tasks."},{"role":"user","content":"What were the challenges Dealstream encountered during the Siemens opportunity?"},{"role":"assistant","content":"Lead Prioritization, Data Visibility, Streamlined Collaboration, Improved Sales Forecasting, Customization and Integration, Integration Concerns, Pricing and ROI Analysis, Finalization and Implementation, RFP Response"}]}
 ```
 Specific pain points training for 6 opportunities.
-Repeated 100 variations of the user content and assistant content kept the same. Repeated for 6 opportunities. (Siemens, Virgin Media, Pfizer, Tesco, Oracle, Rolls Royce)
+Repeated 100 variations of the user content and assistant content kept the same. Repeated for 6 opportunities.  (Siemens, Virgin Media, Pfizer, Oracle, Rolls Royce, Tesco)
 
 ```
-{"messages": [{ "role": "system", "content": "You are a helpful assistant that recognizes the section ID for reference and answers only specifically to a question asked by the user based on the discussions overview under that section ID." },{ "role": "user", "content": "Unique Section ID - dealstream_opportunity_siemens_999001 - This is an overview of the discussions that happened between DealStream and Pfizer on specific date." }, { "role": "assistant", "content": Date - Discussion happened between Siemens and Dealstream on that specific date.}]}
+{"messages": [{"role": "system", "content": "You are a helpful assistant that recognizes the section ID for reference and answers solely based on the specific question asked by the user within that section ID. Please refrain from providing information that is not derived from the provided content."}, {"role": "user", "content": "Unique Section ID - dealstream_opportunity_britishairways_999004 - This is an overview of the discussions that happened between DealStream and British Airways on specific dates."}, {"role": "assistant", "content": "30/05/2023 - Discussed the requirement for a termination for cause clause with the Economic Buyer, emphasizing the limitation based on revenue recognition. First legal call to address contract points was successful."}]}
 ```
-User content contains date wise prompt, assistant content contains the notes on that date. Not added any variations for user content.
-
+For each opportunity
+Plus general sales data without any repeatations (aggregated_fine_tuning_messages.jsonl)
