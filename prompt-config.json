@@ -2,8 +2,8 @@
  "SYSTEM_PROMPT": "You are a bot helping a sales officer to execute his daily tasks. Provide response on the specific questions asked. If the answer is not available, respond with 'Information not available'.",
  "UNDER_PERFORMING_OPPORTUNITIES_PROMPT": "List the name of all under performing opportunities in json array with the following format [\"Value 1\", \"Value 2\",...]",
  "ALL_OPPORTUNITIES_PROMPT": "List all opportunities in json array with the following format ```[\"Value 1\", \"Value 2\",...]```",
- "LIST_PAIN_POINTS_PROMPT": "What are the pain points in {opportunity} discussions, provide maximum 5 points in short sentence in json array with the following format ```[\"Value 1\", \"Value 2\",...]```",
- "LIST_SUGGESTED_SOLUTION_PROMPT": "List the suggested solutions for the pain points {checkList} in {opportunity} in short sentence in json array with the following format ```[\"Value 1\", \"Value 2\",...]```",
- "LIST_SUGGESTED_ACTION_PROMPT": "List the suggested actions for the suggested point {suggestionPoint} in {opportunity} in short sentence in json array with the following format ```[\"Value 1\", \"Value 2\",...]```",
+ "LIST_PROBLEM_POINTS_PROMPT": "What are the problem points in {opportunity_notes} discussions, provide maximum 5 points in short sentence in json array with the following format ```[\"Value 1\", \"Value 2\",...]```",
+ "LIST_SUGGESTED_SOLUTION_PROMPT": "List the suggested solutions for the problem points {problem_point_checkList} in {opportunity_notes} in short sentence in json array with the following format ```[\"Value 1\", \"Value 2\",...]```",
+ "LIST_SUGGESTED_ACTION_PROMPT": "List the suggested actions for the suggested solution {suggested_solution} in {opportunity_notes} in short sentence in json array with the following format ```[\"Value 1\", \"Value 2\",...]```",
  "MODEL_NAME": "ft:gpt-3.5-turbo-0613:dealstreamai::84DEtAYU"
 }
