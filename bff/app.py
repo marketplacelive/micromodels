@@ -9,9 +9,9 @@ import secrets
 
 load_dotenv()
 
-openai.api_key = os.getenv('API_KEY')
+openai.api_key = os.getenv("API_KEY")
 #print(openai.api_key)
-openai.organization = "org-Vr7uMJpfbQB3QtNpP1IFWeMG"
+openai.organization = os.getenv("org_id")
 
 API_SECRET = os.getenv('API_SECRET')
 secret_key = secrets.token_urlsafe(32)
