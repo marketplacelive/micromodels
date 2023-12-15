@@ -88,7 +88,7 @@ def get_email_message():
     request_data = request.get_json()
     #messages = request_data['messages']
    
-    problem_points = request_data['problem_points']
+    problem_points = ",".join(request_data['problem_points'])
     suggested_solutions = request_data['suggested_solutions']
     contact_name = request_data['contact_name']
     if "model_name" in request_data:
@@ -158,10 +158,10 @@ Instructions to AI: Based on the 3 samples provided, compose a professional emai
 Use only the below problem points and suggested solutions for crafting new email. Email message should only contain maximum of 10 sentences. Remove Subject line from the message.
 Your Name : Bob Ward
 Recipient's Name : {contact_name}
-Problem point(s) : Delayed NDA
-Suggested solution(s): Sent an email to stakeholders to push for the NDA
+Problem point(s) : {problem_points}
+Suggested solution(s): {suggested_solutions}
 """
-        sample_template = sample_template.format(contact_name=contact_name)
+        sample_template = sample_template.format(contact_name=contact_name, problem_points=problem_points, suggested_solutions=suggested_solutions)
                 
         #messages[1]={"role":"user","content": sample_template}
         messages=[{"role": "system", "content": "You're an AI sales assistant aiding sales agents in crafting concise email templates derived from problem points and suggested solutions, all within a brief word limit."},{"role":"user","content": sample_template}]
