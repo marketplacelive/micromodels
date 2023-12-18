@@ -8,6 +8,8 @@ import os
 from get_opportunity import get_all_opportunities
 import secrets
 from get_sales_notes import get_sales_notes
+import json
+import requests
 
 load_dotenv()
 
@@ -34,6 +36,17 @@ def require_api_key(func):
         return func(*args, **kwargs)
     return decorated
 
+def get_config_file(url):
+    # Make an HTTP GET request to the URL
+    response = requests.get(url)
+    # Check if the request was successful (status code 200)
+    if response.status_code == 200:
+        # Parse the JSON content
+        return response.json()
+    else:
+        # Print an error message if the request was not successful
+        return f"Failed to fetch data. Status code: {response.status_code}"
+        
 @app.route("/")
 def hello():
     return "<h1 style='color:blue'>Hello There!</h1>"
@@ -161,13 +174,22 @@ Recipient's Name : {contact_name}
 Problem point(s) : {problem_points}
 Suggested solution(s): {suggested_solutions}
 """
-        sample_template = sample_template.format(contact_name=contact_name, problem_points=problem_points, suggested_solutions=suggested_solutions)
+        #config_file_path = "../prompt-config.json"
+        #json_data_string = open(config_file_path, "r").read()
+        json_data_string = get_config_file("https://storage.googleapis.com/dealstream-poc/prompt-config.json")
+        #print(json_data_string["MODEL_NAME"])
+        #print(json_data_string["EMAIL_MESSAGE_PROMPT"])
+        # Load the JSON data
+        email_message_prompt = json_data_string["EMAIL_MESSAGE_PROMPT"]
+        email_message_prompt_model = json_data_string["EMAIL_MESSAGE_PROMPT_MODEL"]
+        email_message_prompt = email_message_prompt.format(contact_name=contact_name, problem_points=problem_points, suggested_solutions=suggested_solutions)
                 
         #messages[1]={"role":"user","content": sample_template}
-        messages=[{"role": "system", "content": "You're an AI sales assistant aiding sales agents in crafting concise email templates derived from problem points and suggested solutions, all within a brief word limit."},{"role":"user","content": sample_template}]
+        messages=[{"role": "system", "content": "You're an AI sales assistant aiding sales agents in crafting concise email templates derived from problem points and suggested solutions, all within a brief word limit."},{"role":"user","content": email_message_prompt}]
+        #print(email_message_prompt_model)
         response = client.chat.completions.create(
             messages=messages,
-            model='gpt-3.5-turbo-1106',
+            model=email_message_prompt_model,
             max_tokens=500,
             temperature=0,
         )
