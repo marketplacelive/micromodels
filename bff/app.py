@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS, cross_origin
 from functools import wraps
 import openai
@@ -69,7 +69,7 @@ def get_prompt_response():
         #opportunity_id = "006Hs00001DHMV9IAP";
         sales_notes = get_sales_notes(request_data["opportunity_id"])
         messages[1]["content"] = messages[1]["content"].format(opportunity_notes=sales_notes)
-        #print(messages);
+        print(messages);
         response = client.chat.completions.create(
             messages=messages,
             model=model_name,
@@ -201,6 +201,27 @@ Suggested solution(s): {suggested_solutions}
         print(e)
         return ""
 
+@app.route('/update-config-file')
+def index():
+    return render_template('file_upload.html')
+    
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    # Check if the POST request has the file part
+    if 'file' not in request.files:
+        return 'No file part'
+
+    file = request.files['file']
+
+    # If the user does not select a file, the browser submits an empty file without a filename
+    if file.filename == '':
+        return 'No selected file'
+
+    # Save the uploaded file to the specified upload folder
+    file.save(os.path.join(file.filename))
+
+    return 'File uploaded successfully'
+    
 
 if __name__ == "__main__":
     app.run()
