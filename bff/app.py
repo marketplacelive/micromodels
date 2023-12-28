@@ -10,6 +10,7 @@ import secrets
 from get_sales_notes import get_sales_notes
 import json
 import requests
+import logging
 
 load_dotenv()
 
@@ -27,6 +28,26 @@ app.config['SECRET_KEY'] = secret_key
 
 CORS(app)
 
+logging.basicConfig(level=logging.INFO)
+# Create a logger for your module
+logger = logging.getLogger(__name__)
+
+# Create a FileHandler for INFO-level messages
+info_handler = logging.FileHandler('application.log')
+info_handler.setLevel(logging.INFO)
+info_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+info_handler.setFormatter(info_format)
+
+# Create a FileHandler for ERROR-level messages
+error_handler = logging.FileHandler('error.log')
+error_handler.setLevel(logging.ERROR)
+error_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+error_handler.setFormatter(error_format)
+
+# Add the handlers to the logger
+logger.addHandler(info_handler)
+logger.addHandler(error_handler)
+
 
 def require_api_key(func):
     @wraps(func)
@@ -35,6 +56,31 @@ def require_api_key(func):
         if api_key != API_SECRET:
             return jsonify({'error': 'Invalid API Key'}), 401
         return func(*args, **kwargs)
+    return decorated
+
+
+def log_request_response(func):
+    @wraps(func)
+    def decorated(*args, **kwargs):
+        try:
+            # Log the request details
+            logger.info(f"Request: {request.method} {request.url}")
+            logger.info(f"Request Data: {request.get_data().decode('utf-8')}")
+
+            # Call the actual function
+            response = func(*args, **kwargs)
+            # Log the response details
+            if isinstance(response, list):
+                logger.info(
+                f"Response Data: {response}\n")
+                return response
+            logger.info(
+                f"Response Data: {response.response}\n")
+            return response
+        except Exception as e:
+            # Log any exceptions that may occur
+            logger.error(f"An error occurred: {str(e)}")
+            raise
     return decorated
 
 
@@ -47,6 +93,7 @@ def fetch_data(url):
 
 
 def create_chat_response(messages, model_name):
+    logging.info(messages)
     try:
         response = client.chat.completions.create(
             messages=messages,
@@ -86,6 +133,7 @@ def hello():
 
 @app.route("/api/prompt", methods=["POST"])
 @require_api_key
+@log_request_response
 def get_prompt_response():
     request_data = request.get_json()
     messages = request_data['messages']
@@ -94,11 +142,13 @@ def get_prompt_response():
     model_name = request_data.get("model_name", 'gpt-3.5-turbo-1106').strip()
     if not model_name.strip():
         model_name = 'gpt-3.5-turbo-1106'
-    return create_chat_response(messages, model_name=model_name)
+    result = create_chat_response(messages, model_name=model_name)
+    return result
 
 
 @app.route("/api/opportunity-list", methods=["GET"])
 @require_api_key
+@log_request_response
 def get_query_response():
     opportunities = get_all_opportunities()
     try:
@@ -111,6 +161,7 @@ def get_query_response():
 
 @app.route("/api/get-email-template", methods=["POST"])
 @require_api_key
+@log_request_response
 def get_email_message():
     request_data = request.get_json()
     return get_email_template(request_data)
