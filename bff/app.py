@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, Response, jsonify, render_template
 from flask_cors import CORS, cross_origin
 from functools import wraps
 import openai
@@ -11,6 +11,7 @@ from get_sales_notes import get_sales_notes
 import json
 import requests
 import logging
+import subprocess
 
 load_dotenv()
 
@@ -93,7 +94,7 @@ def fetch_data(url):
 
 
 def create_chat_response(messages, model_name):
-    logging.info(messages)
+    logger.info(messages)
     try:
         response = client.chat.completions.create(
             messages=messages,
@@ -182,6 +183,24 @@ def upload_file():
     file.save(os.path.join(file.filename))
     return 'File uploaded successfully'
 
+def get_last_n_entries(file_path, n):
+    try:
+        tail_command = ['tail', '-n', str(n), file_path]
+        log_data = subprocess.check_output(tail_command, universal_newlines=True)
+        return log_data
+
+    except Exception as e:
+        logger.error(f"Error fetching log: {str(e)}")
+        raise
+
+@app.route('/api/viewlog', methods=['GET'])
+def view_log():
+    try:
+        log_data = get_last_n_entries('application.log', n=100)
+        return Response(log_data, mimetype='text/plain')
+    except Exception as e:
+        print(e)
+        return jsonify({'error': 'Failed to fetch log data'}), 500
 
 if __name__ == "__main__":
     app.run()
