@@ -115,13 +115,14 @@ def get_email_template(request_data):
     email_message_prompt = json_data_string.get("EMAIL_MESSAGE_PROMPT", "")
     email_message_prompt_model = json_data_string.get(
         "EMAIL_MESSAGE_PROMPT_MODEL", "")
+    email_message_system_prompt = json_data_string.get("EMAIL_MESSAGE_SYSTEM_PROMPT", "")
     email_message_prompt = email_message_prompt.format(
         contact_name=request_data['contact_name'],
         problem_points=request_data['problem_points'],
         suggested_solutions=request_data['suggested_solutions']
     )
     messages = [
-        {"role": "system", "content": "You're an AI sales assistant aiding sales agents in crafting concise email templates derived from problem points and suggested solutions, all within a brief word limit."},
+        {"role": "system", "content": email_message_system_prompt},
         {"role": "user", "content": email_message_prompt}
     ]
     return create_chat_response(messages, model_name=email_message_prompt_model)
