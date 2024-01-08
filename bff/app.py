@@ -92,6 +92,16 @@ def fetch_data(url):
     else:
         return f"Failed to fetch data. Status code: {response.status_code}"
 
+def get_json_data(filename):
+    try:
+        with open(filename, 'r') as file:
+            jsondata = json.load(file)
+            return jsondata
+    except Exception as e:
+        raise FileNotFoundError(f"JSON file '{filename}' not found.")
+    except ValueError:
+        raise ValueError(f"Invalid JSON data in file '{filename}'.")
+
 
 def create_chat_response(messages, model_name):
     logger.info(messages)
@@ -110,8 +120,7 @@ def create_chat_response(messages, model_name):
 
 
 def get_email_template(request_data):
-    json_data_string = fetch_data(
-        "https://storage.googleapis.com/dealstream-poc/prompt-config.json")
+    json_data_string = get_json_data("prompt-config.json")
     email_message_prompt = json_data_string.get("EMAIL_MESSAGE_PROMPT", "")
     email_message_prompt_model = json_data_string.get(
         "EMAIL_MESSAGE_PROMPT_MODEL", "")
@@ -183,6 +192,23 @@ def upload_file():
         return 'No selected file'
     file.save(os.path.join(file.filename))
     return 'File uploaded successfully'
+
+@app.route('/config')
+def view_config():
+    config_data = get_json_data("prompt-config.json")
+    return render_template('prompt_config.html', config_data=config_data)
+
+@app.route('/update-config', methods=['POST'])
+def update_config():
+    request_data = request.get_json()
+    # Create the JSON file
+    try:
+        with open('prompt-config.json', 'w') as f:
+            json.dump(request_data, f)
+    except Exception as e:
+        return jsonify({'status': 'error', 'error': 'Failed to create local configuration file'}), 500  
+
+    return jsonify({'status': 'success', 'message': 'Configuration updated'})
 
 def get_last_n_entries(file_path, n):
     try:
