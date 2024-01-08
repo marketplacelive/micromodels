@@ -210,6 +210,17 @@ def update_config():
 
     return jsonify({'status': 'success', 'message': 'Configuration updated'})
 
+@app.route("/api/get-config")
+def get_config_data():
+    try:
+        with open("prompt-config.json", 'r') as file:
+            jsondata = json.load(file)
+            return jsondata
+    except Exception as e:
+        raise FileNotFoundError(f"JSON file '{filename}' not found.")
+    except ValueError:
+        raise ValueError(f"Invalid JSON data in file '{filename}'.")
+
 def get_last_n_entries(file_path, n):
     try:
         tail_command = ['tail', '-n', str(n), file_path]
