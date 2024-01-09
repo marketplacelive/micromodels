@@ -177,6 +177,20 @@ def get_email_message():
     request_data = request.get_json()
     return get_email_template(request_data)
 
+@app.route("/api/get-meeting-description")
+@require_api_key
+@log_request_response
+def get_meeting_description():
+    response = "The purpose of the meeting is to conduct a comprehensive review of the deal under consideration."
+    return response
+
+@app.route("/api/get-meeting-objectives")
+@require_api_key
+@log_request_response
+def get_meeting_objective():
+    response = "Budget allocated to the project, Additional stakeholders, What are the timelines, What is driving this project, Who are we competing with?, What is the next step?, USP of the product, Who are the target users?"
+    return response
+
 
 @app.route('/update-config-file')
 def index():
