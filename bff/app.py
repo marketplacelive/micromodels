@@ -73,10 +73,13 @@ def log_request_response(func):
             # Log the response details
             if isinstance(response, list):
                 logger.info(
+                    f"Response Data: {response}\n")
+            elif isinstance(response, str):
+                logger.info(
                 f"Response Data: {response}\n")
-                return response
-            logger.info(
-                f"Response Data: {response.response}\n")
+            else:
+                logger.info(
+                    f"Response Data: {response.response}\n")
             return response
         except Exception as e:
             # Log any exceptions that may occur
