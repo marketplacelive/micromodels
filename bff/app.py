@@ -184,15 +184,29 @@ def get_email_message():
 @require_api_key
 @log_request_response
 def get_meeting_description():
-    response = "The purpose of the meeting is to conduct a comprehensive review of the deal under consideration."
-    return response
+    request_data = request.args
+    meeting_type = request_data['meeting_type']
+    json_data_string = get_json_data("prompt-config.json")
+    system_prompt = json_data_string.get("SYSTEM_PROMPT", "")
+    meeting_description_prompt = json_data_string.get("MEETING_DESCRIPTION_PROMPT", "")
+    meeting_description_prompt = meeting_description_prompt.format(meeting_type=meeting_type)
+    model_name = json_data_string.get("MODEL_NAME", "")
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": meeting_description_prompt}
+    ]
+    result = create_chat_response(messages, model_name=model_name)
+    return result
 
 @app.route("/api/get-meeting-objectives")
 @require_api_key
 @log_request_response
 def get_meeting_objective():
-    response = "Budget allocated to the project, Additional stakeholders, What are the timelines, What is driving this project, Who are we competing with?, What is the next step?, USP of the product, Who are the target users?"
-    return response
+    request_data = request.args
+    opportunity_id = request_data['opportunity_id']
+    sales_notes = get_sales_notes(request_data["opportunity_id"])
+    response = {"meeting_type": "Qualification Meeting", "meeting_objectives": "Budget allocated to the project, Additional stakeholders, What are the timelines, What is driving this project, Who are we competing with?, What is the next step?, USP of the product, Who are the target users?"}
+    return jsonify(response)
 
 
 @app.route('/update-config-file')
