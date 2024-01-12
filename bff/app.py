@@ -12,6 +12,7 @@ import json
 import requests
 import logging
 import subprocess
+import sqlite3
 
 load_dotenv()
 
@@ -190,7 +191,7 @@ def get_meeting_description():
     system_prompt = json_data_string.get("SYSTEM_PROMPT", "")
     meeting_description_prompt = json_data_string.get("MEETING_DESCRIPTION_PROMPT", "")
     meeting_description_prompt = meeting_description_prompt.format(meeting_type=meeting_type)
-    model_name = json_data_string.get("MODEL_NAME", "")
+    model_name = json_data_string.get("MEETING_DESCRIPTION_PROMPT_MODEL", "")
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": meeting_description_prompt}
@@ -208,6 +209,29 @@ def get_meeting_objective():
     response = {"meeting_type": "Qualification Meeting", "meeting_objectives": "Budget allocated to the project, Additional stakeholders, What are the timelines, What is driving this project, Who are we competing with?, What is the next step?, USP of the product, Who are the target users?"}
     return jsonify(response)
 
+@app.route("/action-list")
+@require_api_key
+@log_request_response
+def get_action_list():
+    try:
+        conn = sqlite3.connect("action_data.db")
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT action.action_name, action_list.account_name, action_list.category, action_list.priority, action_list.due_before
+            FROM action
+            INNER JOIN action_list ON action.id = action_list.action_id
+        """)
+        actions = cursor.fetchall()
+        json_data = [
+            {"action_name": action[0], "account_name": action[1], "category": action[2], "priority": action[3], "due_before": action[4]}
+            for action in actions
+        ]
+        return jsonify(json_data)
+    except sqlite3.Error as e:
+        return jsonify({"error": "Database error: {}".format(e)}), 500
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/update-config-file')
 def index():
