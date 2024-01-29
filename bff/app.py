@@ -13,6 +13,7 @@ import requests
 import logging
 import subprocess
 import sqlite3
+import re
 
 load_dotenv()
 
@@ -199,28 +200,91 @@ def get_meeting_description():
     result = create_chat_response(messages, model_name=model_name)
     return result
 
+@app.route("/api/get-action-list-email-message", methods=["GET"])
+@require_api_key
+@log_request_response
+def get_action_list_email_message():
+    request_data = request.args 
+    #email_sales_note=request_data['email_sales_note']
+    email_sales_note_id=request_data['id']
+    json_data_string = get_json_data("prompt-config.json")
+    if email_sales_note_id == "1":
+        email_sales_note = "Received and email from Colin Gow regarding ball park pricing that needs to be responded to"
+    elif email_sales_note_id == "2":
+        email_sales_note = "Received an email from Steph Cole concering API integrations which needs to be responded to"
+    else:
+        email_sales_note = "Received an email from John Baker today cooncerning Data Privacy that I need to respond to"
+              
+    action_list_email_message_system_prompt= json_data_string.get("ACTION_LIST_EMAIL_MESSAGE_SYSTEM_PROMPT", "")
+    action_list_email_message_prompt = json_data_string.get("ACTION_LIST_EMAIL_MESSAGE_PROMPT", "")
+    action_list_email_message_prompt = action_list_email_message_prompt.format(email_sales_note=email_sales_note)
+    model_name = json_data_string.get("ACTION_LIST_EMAIL_MESSAGE_PROMPT_MODEL", "")
+    messages = [
+        {"role": "system", "content": action_list_email_message_system_prompt},
+        {"role": "user", "content": action_list_email_message_prompt}
+    ]
+    result = create_chat_response(messages, model_name=model_name)
+    result_string = result.get_data()
+    result_json = json.loads(result_string)
+    result_value = result_json.get("answer")
+    pattern = r"Subject: (.*?)\n"
+    match = re.search(pattern, str(result_value), re.DOTALL)
+    subject = match.group(1)
+    email_text = re.sub(pattern, '', str(result_value))
+    return jsonify({"subject":subject, "message":email_text}) 
+
+@app.route("/api/get-stakeholder-email-message", methods=["GET"])
+@require_api_key
+@log_request_response
+def get_stakeholder_email_message():
+    request_data = request.args 
+    #email_sales_note=request_data['email_sales_note']
+    sales_notes = get_sales_notes(request_data["opportunity_id"])
+    contact_name = request_data["contact_name"]
+    json_data_string = get_json_data("prompt-config.json")
+    stakeholder_email_message_system_prompt= json_data_string.get("STAKEHOLDER_EMAIL_MESSAGE_SYSTEM_PROMPT", "")
+    stakeholder_email_message_prompt = json_data_string.get("STAKEHOLDER_EMAIL_MESSAGE_PROMPT", "")
+    stakeholder_email_message_prompt = stakeholder_email_message_prompt.format(sales_notes=sales_notes, contact_name=contact_name)
+    model_name = json_data_string.get("STAKEHOLDER_EMAIL_MESSAGE_PROMPT_MODEL", "")
+    messages = [
+        {"role": "system", "content": stakeholder_email_message_system_prompt},
+        {"role": "user", "content": stakeholder_email_message_prompt}
+    ]
+    result = create_chat_response(messages, model_name=model_name)
+    result_string = result.get_data()
+    result_json = json.loads(result_string)
+    result_value = result_json.get("answer")
+    pattern = r"Subject: (.*?)\n"
+    match = re.search(pattern, str(result_value), re.DOTALL)
+    subject = match.group(1)
+    email_text = re.sub(pattern, '', str(result_value))
+    return jsonify({"subject":subject, "message":email_text}) 
+    #return result
+    
 @app.route("/api/get-meeting-objectives")
 @require_api_key
 @log_request_response
 def get_meeting_objective():
     request_data = request.args
     opportunity_id = request_data['opportunity_id']
-    sales_notes = get_sales_notes(opportunity_id)
-    json_data_string = get_json_data("prompt-config.json")
-    system_prompt = json_data_string.get("MEETING_OBJECTIVE_SYSTEM_PROMPT", "")
-    meeting_objective_prompt = json_data_string.get("MEETING_OBJECTIVE_PROMPT", "")
-    meeting_objective_prompt = meeting_objective_prompt.format(sales_notes=sales_notes)
-    model_name = json_data_string.get("MEETING_OBJECTIVE_PROMPT_MODEL", "")
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": meeting_objective_prompt}
-    ]
-    result = create_chat_response(messages, model_name=model_name)
-    result_string = result.get_data()
-    result_json = json.loads(result_string)
-    meeting_type = result_json.get("answer")
-    
-    meeting_objective = {"Qualification Meeting": ["Identify stakeholders","Define budget availability","Identify Timelines","Identify the why?","Identify Compwetition","Clarify procurement process","Understand current Tech stack","Identify Economic Buyer"], "Discovery Meeting": ["Identify the pain points","Validate stakeholders","Validate procurement process","Identify key must have functioanlity","Set a date for a Tech stack call","Identify Champion","Set date for demonstration meeting","Discuss NDA requirement"], "Demonstration Meeting":["Cover the Dealstream Value","Deliver tailored demonstration","Gauge audience feedback","Discuss customer use cases","Discuss Value Engineering","Offer a Value engineering session","Discuss proposal delivery"], "Tech Stack Validation Meeting":["Understand the Tech environment","Discuss integration requirements","Discuss Data Provacy requirements","Identify where main data is held","Request access to business process"], "Internal Solution Review Meeting":["Deliver Tech Stack Overview","Deliver solution Overview","Discuss all integration requirements","Discuss all Language requirements","Discuss all geographical deployment","Secure commitment from PM for support"],"General Update meeting":["Project update details","Discuss any changes to plan","Discuss outstanding actions","Discuss any RFP / RFI requirements"],"Stakeholder Meeting":["Introduce key personel","present proposal for delivery","Discuss procing if requested","Present proposal and POV","Understand the paper process"],"Implementation Meeting":["Discuss  all integration reqiorements","Discuss numbers and types of users","Offer to build a draft SOW"],"Value Engineering Meeting":["Undersdtand current outcomes being achieved","Discuss number of users","Discuss sales numbers","Discuss ramp time for sales","Discuss % of top performers","Discuss revenue from top performers","Discuss second tier performer revenues"],"Contract Meeting":["Discuss all contract details","Ascertain whos contract we are using","Identify main legal contact","Set up cadence calls with legal"],"Infosec Data Provacy Meeting":["Send DPA to client","Identify main InfoSec contact","Discuss all aspects of DP","Understand the customers DP requirements"],"MAP Meeting":["Send MAP template to client","Discuss the steps in the process","Agree that the steps are correct","Agree Timelines are correct","Gain customer commitment to modify"],"Executive Alignment Meeting":["Meet key stakeholders on customer side","Meet Key stakeholders on Vendor side","Discuss executive support where needed"]}
+    meeting_type = request_data.get("meeting_type","")
+    if not meeting_type:
+        sales_notes = get_sales_notes(opportunity_id)
+        json_data_string = get_json_data("prompt-config.json")
+        system_prompt = json_data_string.get("MEETING_OBJECTIVE_SYSTEM_PROMPT", "")
+        meeting_objective_prompt = json_data_string.get("MEETING_OBJECTIVE_PROMPT", "")
+        meeting_objective_prompt = meeting_objective_prompt.format(sales_notes=sales_notes)
+        model_name = json_data_string.get("MEETING_OBJECTIVE_PROMPT_MODEL", "")
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": meeting_objective_prompt}
+        ]
+        result = create_chat_response(messages, model_name=model_name)
+        result_string = result.get_data()
+        result_json = json.loads(result_string)
+        meeting_type = result_json.get("answer")
+        
+    meeting_objective = {"Qualification Meeting": ["Identify stakeholders","Define budget availability","Identify Timelines","Identify the why?","Identify Compwetition","Clarify procurement process","Understand current Tech stack","Identify Economic Buyer"], "Discovery Meeting": ["Identify the pain points","Validate stakeholders","Validate procurement process","Identify key must have functioanlity","Set a date for a Tech stack call","Identify Champion","Set date for demonstration meeting","Discuss NDA requirement"], "Demonstration Meeting":["Cover the Dealstream Value","Deliver tailored demonstration","Gauge audience feedback","Discuss customer use cases","Discuss Value Engineering","Offer a Value engineering session","Discuss proposal delivery"], "Tech Stack Validation Meeting":["Understand the Tech environment","Discuss integration requirements","Discuss Data Provacy requirements","Identify where main data is held","Request access to business process"], "Tech Stack meeting":["Understand the Tech environment","Discuss integration requirements","Discuss Data Provacy requirements","Identify where main data is held","Request access to business process"], "Internal Solution Review Meeting":["Deliver Tech Stack Overview","Deliver solution Overview","Discuss all integration requirements","Discuss all Language requirements","Discuss all geographical deployment","Secure commitment from PM for support"],"General Update meeting":["Project update details","Discuss any changes to plan","Discuss outstanding actions","Discuss any RFP / RFI requirements"],"Stakeholder Meeting":["Introduce key personel","present proposal for delivery","Discuss procing if requested","Present proposal and POV","Understand the paper process"],"Implementation Meeting":["Discuss  all integration reqiorements","Discuss numbers and types of users","Offer to build a draft SOW"],"Value Engineering Meeting":["Undersdtand current outcomes being achieved","Discuss number of users","Discuss sales numbers","Discuss ramp time for sales","Discuss % of top performers","Discuss revenue from top performers","Discuss second tier performer revenues"],"Contract Meeting":["Discuss all contract details","Ascertain whos contract we are using","Identify main legal contact","Set up cadence calls with legal"],"Infosec Data Provacy Meeting":["Send DPA to client","Identify main InfoSec contact","Discuss all aspects of DP","Understand the customers DP requirements"],"MAP Meeting":["Send MAP template to client","Discuss the steps in the process","Agree that the steps are correct","Agree Timelines are correct","Gain customer commitment to modify"],"Executive Alignment Meeting":["Meet key stakeholders on customer side","Meet Key stakeholders on Vendor side","Discuss executive support where needed"]}
 
     if meeting_type in meeting_objective:
         objectives = meeting_objective[meeting_type]
