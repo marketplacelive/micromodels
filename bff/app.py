@@ -14,6 +14,7 @@ import logging
 import subprocess
 import sqlite3
 import re
+from flask_swagger_ui import get_swaggerui_blueprint
 
 load_dotenv()
 
@@ -51,6 +52,16 @@ error_handler.setFormatter(error_format)
 logger.addHandler(info_handler)
 logger.addHandler(error_handler)
 
+SWAGGER_URL = '/swagger'
+API_URL = '/swagger.json'
+swaggerui_blueprint = get_swaggerui_blueprint(
+    SWAGGER_URL,
+    API_URL,
+    config={
+        'app_name': "Dealstream"
+    }
+)
+app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
 
 def require_api_key(func):
     @wraps(func)
@@ -259,7 +270,7 @@ def get_stakeholder_email_message():
     subject = match.group(1)
     email_text = re.sub(pattern, '', str(result_value))
     return jsonify({"subject":subject, "message":email_text}) 
-    #return result
+
     
 @app.route("/api/get-meeting-objectives")
 @require_api_key
@@ -268,13 +279,16 @@ def get_meeting_objective():
     request_data = request.args
     opportunity_id = request_data['opportunity_id']
     meeting_type = request_data.get("meeting_type","")
+    problem_points = request_data.get('problem_points', "")
+    sales_notes = get_sales_notes(opportunity_id)
+    json_data_string = get_json_data("prompt-config.json")
+    system_prompt = json_data_string.get("MEETING_OBJECTIVE_SYSTEM_PROMPT", "")
+    model_name = json_data_string.get("MEETING_OBJECTIVE_PROMPT_MODEL", "")
+    meeting_objective = {"Qualification Meeting": ["Identify stakeholders","Define budget availability","Identify Timelines","Identify the why?","Identify Compwetition","Clarify procurement process","Understand current Tech stack","Identify Economic Buyer"], "Discovery Meeting": ["Identify the pain points","Validate stakeholders","Validate procurement process","Identify key must have functioanlity","Set a date for a Tech stack call","Identify Champion","Set date for demonstration meeting","Discuss NDA requirement"], "Demonstration Meeting":["Cover the Dealstream Value","Deliver tailored demonstration","Gauge audience feedback","Discuss customer use cases","Discuss Value Engineering","Offer a Value engineering session","Discuss proposal delivery"], "Tech Stack Validation Meeting":["Understand the Tech environment","Discuss integration requirements","Discuss Data Provacy requirements","Identify where main data is held","Request access to business process"], "Tech Stack meeting":["Understand the Tech environment","Discuss integration requirements","Discuss Data Provacy requirements","Identify where main data is held","Request access to business process"], "Internal Solution Review Meeting":["Deliver Tech Stack Overview","Deliver solution Overview","Discuss all integration requirements","Discuss all Language requirements","Discuss all geographical deployment","Secure commitment from PM for support"],"General Update meeting":["Project update details","Discuss any changes to plan","Discuss outstanding actions","Discuss any RFP / RFI requirements"],"Stakeholder Meeting":["Introduce key personel","present proposal for delivery","Discuss procing if requested","Present proposal and POV","Understand the paper process"],"Implementation Meeting":["Discuss  all integration reqiorements","Discuss numbers and types of users","Offer to build a draft SOW"],"Value Engineering Meeting":["Undersdtand current outcomes being achieved","Discuss number of users","Discuss sales numbers","Discuss ramp time for sales","Discuss % of top performers","Discuss revenue from top performers","Discuss second tier performer revenues"],"Contract Meeting":["Discuss all contract details","Ascertain whos contract we are using","Identify main legal contact","Set up cadence calls with legal"],"Infosec Data Provacy Meeting":["Send DPA to client","Identify main InfoSec contact","Discuss all aspects of DP","Understand the customers DP requirements"],"MAP Meeting":["Send MAP template to client","Discuss the steps in the process","Agree that the steps are correct","Agree Timelines are correct","Gain customer commitment to modify"],"Executive Alignment Meeting":["Meet key stakeholders on customer side","Meet Key stakeholders on Vendor side","Discuss executive support where needed"]}
+    
     if not meeting_type:
-        sales_notes = get_sales_notes(opportunity_id)
-        json_data_string = get_json_data("prompt-config.json")
-        system_prompt = json_data_string.get("MEETING_OBJECTIVE_SYSTEM_PROMPT", "")
         meeting_objective_prompt = json_data_string.get("MEETING_OBJECTIVE_PROMPT", "")
-        meeting_objective_prompt = meeting_objective_prompt.format(sales_notes=sales_notes)
-        model_name = json_data_string.get("MEETING_OBJECTIVE_PROMPT_MODEL", "")
+        meeting_objective_prompt = meeting_objective_prompt.format(sales_notes=sales_notes, problem_points=problem_points)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": meeting_objective_prompt}
@@ -283,15 +297,23 @@ def get_meeting_objective():
         result_string = result.get_data()
         result_json = json.loads(result_string)
         meeting_type = result_json.get("answer")
-        
-    meeting_objective = {"Qualification Meeting": ["Identify stakeholders","Define budget availability","Identify Timelines","Identify the why?","Identify Compwetition","Clarify procurement process","Understand current Tech stack","Identify Economic Buyer"], "Discovery Meeting": ["Identify the pain points","Validate stakeholders","Validate procurement process","Identify key must have functioanlity","Set a date for a Tech stack call","Identify Champion","Set date for demonstration meeting","Discuss NDA requirement"], "Demonstration Meeting":["Cover the Dealstream Value","Deliver tailored demonstration","Gauge audience feedback","Discuss customer use cases","Discuss Value Engineering","Offer a Value engineering session","Discuss proposal delivery"], "Tech Stack Validation Meeting":["Understand the Tech environment","Discuss integration requirements","Discuss Data Provacy requirements","Identify where main data is held","Request access to business process"], "Tech Stack meeting":["Understand the Tech environment","Discuss integration requirements","Discuss Data Provacy requirements","Identify where main data is held","Request access to business process"], "Internal Solution Review Meeting":["Deliver Tech Stack Overview","Deliver solution Overview","Discuss all integration requirements","Discuss all Language requirements","Discuss all geographical deployment","Secure commitment from PM for support"],"General Update meeting":["Project update details","Discuss any changes to plan","Discuss outstanding actions","Discuss any RFP / RFI requirements"],"Stakeholder Meeting":["Introduce key personel","present proposal for delivery","Discuss procing if requested","Present proposal and POV","Understand the paper process"],"Implementation Meeting":["Discuss  all integration reqiorements","Discuss numbers and types of users","Offer to build a draft SOW"],"Value Engineering Meeting":["Undersdtand current outcomes being achieved","Discuss number of users","Discuss sales numbers","Discuss ramp time for sales","Discuss % of top performers","Discuss revenue from top performers","Discuss second tier performer revenues"],"Contract Meeting":["Discuss all contract details","Ascertain whos contract we are using","Identify main legal contact","Set up cadence calls with legal"],"Infosec Data Provacy Meeting":["Send DPA to client","Identify main InfoSec contact","Discuss all aspects of DP","Understand the customers DP requirements"],"MAP Meeting":["Send MAP template to client","Discuss the steps in the process","Agree that the steps are correct","Agree Timelines are correct","Gain customer commitment to modify"],"Executive Alignment Meeting":["Meet key stakeholders on customer side","Meet Key stakeholders on Vendor side","Discuss executive support where needed"]}
-
+ 
     if meeting_type in meeting_objective:
         objectives = meeting_objective[meeting_type]
     else:
         objectives = []
-    response = {"meeting_type": meeting_type, "meeting_objectives": objectives}
+        return jsonify({"meeting_type": meeting_type, "meeting_objectives": objectives})
+    meeting_objective_prompt = json_data_string.get("ACTION_LIST_MEETING_OBJECTIVE_PROMPT", "")
+    meeting_objective_prompt = meeting_objective_prompt.format(sales_notes=sales_notes, meeting_objectives=objectives, meeting_type=meeting_type)
 
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": meeting_objective_prompt}
+    ]
+    result = create_chat_response(messages, model_name=model_name)
+    objectives = result.get_data()
+    objectives = json.loads(objectives)['answer']
+    response = {"meeting_type": meeting_type, "meeting_objectives": eval(objectives)}
     return jsonify(response)
 
 @app.route("/action-list")
@@ -302,13 +324,13 @@ def get_action_list():
         conn = sqlite3.connect("action_data.db")
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT action.action_name, action_list.account_name, action_list.category, action_list.priority, action_list.due_before
+            SELECT action.id, action.action_name, action_list.account_name, action_list.opportunity_id, action_list.category, action_list.category_id, action_list.priority, action_list.due_before
             FROM action
             INNER JOIN action_list ON action.id = action_list.action_id
         """)
         actions = cursor.fetchall()
         json_data = [
-            {"action_name": action[0], "account_name": action[1], "category": action[2], "priority": action[3], "due_before": action[4]}
+            {"action_id": action[0], "action_name": action[1], "account_name": action[2], "opportunity_id":action[3], "category": action[4], "category_id": action[5], "priority": action[6], "due_before": action[7]}
             for action in actions
         ]
         return jsonify(json_data)
@@ -341,7 +363,6 @@ def view_config():
 @app.route('/update-config', methods=['POST'])
 def update_config():
     request_data = request.get_json()
-    # Create the JSON file
     try:
         with open('prompt-config.json', 'w') as f:
             json.dump(request_data, f)
@@ -380,5 +401,10 @@ def view_log():
         print(e)
         return jsonify({'error': 'Failed to fetch log data'}), 500
 
+@app.route('/swagger.json')
+def swagger():
+    with open('swagger.json', 'r') as f:
+        return jsonify(json.load(f))
+        
 if __name__ == "__main__":
     app.run()
