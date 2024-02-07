@@ -15,6 +15,7 @@ import subprocess
 import sqlite3
 import re
 from flask_swagger_ui import get_swaggerui_blueprint
+import yaml
 
 load_dotenv()
 
@@ -53,7 +54,7 @@ logger.addHandler(info_handler)
 logger.addHandler(error_handler)
 
 SWAGGER_URL = '/swagger'
-API_URL = '/swagger.json'
+API_URL = '/swagger.yaml'
 swaggerui_blueprint = get_swaggerui_blueprint(
     SWAGGER_URL,
     API_URL,
@@ -401,10 +402,11 @@ def view_log():
         print(e)
         return jsonify({'error': 'Failed to fetch log data'}), 500
 
-@app.route('/swagger.json')
+@app.route('/swagger.yaml')
 def swagger():
-    with open('swagger.json', 'r') as f:
-        return jsonify(json.load(f))
+    with open('swagger.yaml', 'r') as f:
+        yaml_content = yaml.safe_load(f)
+        return jsonify(yaml_content)
         
 if __name__ == "__main__":
     app.run()

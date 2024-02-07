@@ -3,6 +3,30 @@
 <head>
 <title>Prompt Configuration</title>
 <style>
+h1 {
+  text-align: center; /* Center the title */
+  color: #007bff; /* Blue color similar to your button for consistency */
+  font-family: 'Arial', sans-serif; /* Modern, readable font */
+  margin-bottom: 20px; /* Add some space below the title */
+}
+#save-button {
+    display: block;
+    width: 200px; /* Adjust the width as needed */
+    padding: 10px 20px;
+    margin: 20px auto; /* This centers the button */
+    background-color: #007bff; /* You can choose your preferred color */
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 18px; /* Adjust the font size as needed */
+    cursor: pointer;
+    outline: none;
+    transition: background-color 0.3s ease;
+}
+
+#save-button:hover {
+    background-color: #0056b3; /* Slightly darker shade on hover */
+}
   .config-row {
     display: flex;
     margin-bottom: 10px;
@@ -13,6 +37,8 @@
     padding: 5px;
     margin-right: 10px;
     border: 1px solid #ccc;
+    background-color: #f2f2f2; /* Light grey background for read-only */
+    color: #333; /* Text color */
     outline: none; 
     align-self: flex-start;
   }
@@ -36,11 +62,11 @@
 </style>
 </head>
 <body>
-  <h1>Prompt Config</h1>
+  <h1>Edit Prompt Config</h1>
   <div id="config-container">
     {% for key, value in config_data.items() %}
       <div class="config-row">
-        <input type="text" value="{{ key }}" placeholder="Key">
+        <input type="text" value="{{ key }}" readonly placeholder="Key">
         <textarea>{{ value }}</textarea>
       </div>
     {% endfor %}
