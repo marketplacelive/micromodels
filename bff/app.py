@@ -16,6 +16,7 @@ import sqlite3
 import re
 from flask_swagger_ui import get_swaggerui_blueprint
 import yaml
+import time
 
 load_dotenv()
 
@@ -163,16 +164,35 @@ def hello():
 @require_api_key
 @log_request_response
 def get_prompt_response():
+    api_start_time = time.time()
     request_data = request.get_json()
     messages = request_data['messages']
+    prompt_type = request_data.get("type","")
     sales_notes = get_sales_notes(request_data["opportunity_id"])
     messages[1]["content"] = messages[1]["content"].format(opportunity_notes=sales_notes)
     model_name = request_data.get("model_name", 'gpt-3.5-turbo-1106').strip()
     if not model_name.strip():
         model_name = 'gpt-3.5-turbo-1106'
+    openai_start_time = time.time()
     result = create_chat_response(messages, model_name=model_name)
-    return result
-
+    openai_endtime = time.time()
+    FUTURE_TENSE_PROMPT_ENABLE = 1
+    if (prompt_type=="suggested_solution" or prompt_type=="suggested_action") and FUTURE_TENSE_PROMPT_ENABLE:
+        response_json = result.get_json() 
+        response_text = response_json['answer'] 
+        json_data_string = get_json_data("prompt-config.json")
+        suggestion_prompt = json_data_string.get("FUTURE_TENSE_PROMPT", "").format(sentences=response_text)
+        suggestion_response = create_chat_response(messages=[{"role": "user", "content": suggestion_prompt}], model_name='gpt-3.5-turbo-1106')
+        end_time = time.time()  
+        first_openai_time = openai_endtime - openai_start_time
+        total_openai_time = end_time - openai_start_time
+        total_time = end_time - api_start_time
+        print(f"first openai call time: {first_openai_time} seconds")
+        print(f"total openai time: {total_openai_time} seconds")
+        print(f"Total API time: {total_time} seconds")
+        return suggestion_response
+    else:
+        return result
 
 @app.route("/api/opportunity-list", methods=["GET"])
 @require_api_key
