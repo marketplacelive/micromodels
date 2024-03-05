@@ -34,7 +34,9 @@ def get_sales_notes(opportunity_id):
     if result:
         sales_notes = ""
         for note in result["records"]:
-            sales_note = note["Date__c"] + " - " + note["Note__c"] + " "
-            sales_notes += sales_note
+            if note['Date__c']:
+                sales_notes += note["Date__c"] + " - " + note["Note__c"] + " "
+            else: 
+                sales_notes += note["Note__c"] + " "
         result = re.sub(r'\s+', ' ', sales_notes)
     return result

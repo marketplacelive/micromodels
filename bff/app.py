@@ -17,6 +17,7 @@ import re
 from flask_swagger_ui import get_swaggerui_blueprint
 import yaml
 import time
+from flask import session
 
 load_dotenv()
 
@@ -92,6 +93,9 @@ def log_request_response(func):
             elif isinstance(response, str):
                 logger.info(
                 f"Response Data: {response}\n")
+            elif isinstance(response, tuple):
+                logger.info(
+                    f"Response Data: {response}\n")    
             else:
                 logger.info(
                     f"Response Data: {response.response}\n")
@@ -120,6 +124,11 @@ def get_json_data(filename):
     except ValueError:
         raise ValueError(f"Invalid JSON data in file '{filename}'.")
 
+def remove_surrounding_quotes(s):
+    # Check if the string starts with \" and ends with \", then remove them
+    if s.startswith("\"") or s.endswith("\""):
+        return s[1:-1].replace('\\"', '"')
+    return s
 
 def create_chat_response(messages, model_name):
     logger.info(messages)
@@ -131,6 +140,7 @@ def create_chat_response(messages, model_name):
             temperature=0,
         )
         response = response.choices[0].message.content
+        response = remove_surrounding_quotes(response)
         return jsonify({"answer": response})
     except Exception as e:
         print(e)
@@ -154,11 +164,48 @@ def get_email_template(request_data):
     ]
     return create_chat_response(messages, model_name=email_message_prompt_model)
 
+def connect_db():
+    conn = sqlite3.connect('action_data.db')
+    conn.row_factory = sqlite3.Row
+    return conn
 
 @app.route("/")
 def hello():
     return "<h1 style='color:blue'>Hello There!</h1>"
 
+def get_suggested_solution(request_data):
+    problem_points = request_data.get("problem_points")
+    suggestion_consolidate_response = ""
+    sales_notes = get_sales_notes(request_data["opportunity_id"])
+    account_name = request_data["account_name"]
+    json_data_string = get_json_data("prompt-config.json")
+    system_prompt = json_data_string.get("SYSTEM_PROMPT", "")
+    for problem_point in problem_points:
+        print(problem_point)
+        if session.get(problem_point) is None:
+            print ("call chat")
+            suggested_solution_prompt = json_data_string.get("LIST_SUGGESTED_SOLUTION_PROMPT", "").format(opportunity_notes=sales_notes, account_name=account_name,problem_point_checkList=problem_point)
+            model_name = request_data.get("model_name", 'gpt-3.5-turbo-1106').strip()
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": suggested_solution_prompt}
+            ]
+            result = create_chat_response(messages, model_name=model_name)
+            response_json = result.get_json()
+            response_text = response_json['answer']
+            suggestion_prompt = json_data_string.get("FUTURE_TENSE_PROMPT", "").format(sentences=response_text)
+            suggestion_response = create_chat_response(messages=[{"role": "user", "content": suggestion_prompt}], model_name='gpt-3.5-turbo-1106')
+            
+            result_string = suggestion_response.get_data()
+            result_json = json.loads(result_string)
+            result_value = result_json.get("answer")
+
+            suggestion_consolidate_response =  suggestion_consolidate_response + result_value
+
+        else:
+            suggestion_consolidate_response = suggestion_consolidate_response + "." +  session.get(problem_point)  
+    
+    return jsonify({"answer":suggestion_consolidate_response})
 
 @app.route("/api/prompt", methods=["POST"])
 @require_api_key
@@ -168,32 +215,37 @@ def get_prompt_response():
     request_data = request.get_json()
     messages = request_data['messages']
     prompt_type = request_data.get("type","")
-    sales_notes = get_sales_notes(request_data["opportunity_id"])
-    messages[1]["content"] = messages[1]["content"].format(opportunity_notes=sales_notes)
-    model_name = request_data.get("model_name", 'gpt-3.5-turbo-1106').strip()
-    if not model_name.strip():
-        model_name = 'gpt-3.5-turbo-1106'
-    openai_start_time = time.time()
-    result = create_chat_response(messages, model_name=model_name)
-    openai_endtime = time.time()
-    FUTURE_TENSE_PROMPT_ENABLE = 1
-    if (prompt_type=="suggested_solution" or prompt_type=="suggested_action") and FUTURE_TENSE_PROMPT_ENABLE:
-        response_json = result.get_json() 
-        response_text = response_json['answer'] 
-        json_data_string = get_json_data("prompt-config.json")
-        suggestion_prompt = json_data_string.get("FUTURE_TENSE_PROMPT", "").format(sentences=response_text)
-        suggestion_response = create_chat_response(messages=[{"role": "user", "content": suggestion_prompt}], model_name='gpt-3.5-turbo-1106')
-        end_time = time.time()  
-        first_openai_time = openai_endtime - openai_start_time
-        total_openai_time = end_time - openai_start_time
-        total_time = end_time - api_start_time
-        print(f"first openai call time: {first_openai_time} seconds")
-        print(f"total openai time: {total_openai_time} seconds")
-        print(f"Total API time: {total_time} seconds")
-        return suggestion_response
-    else:
-        return result
+    if(prompt_type=="suggested_solution"):
+        suggestion_solution = get_suggested_solution(request_data)
+        return suggestion_solution
+    else:    
+        sales_notes = get_sales_notes(request_data["opportunity_id"])
+        messages[1]["content"] = messages[1]["content"].format(opportunity_notes=sales_notes)
+        model_name = request_data.get("model_name", 'gpt-3.5-turbo-1106').strip()
+        if not model_name.strip():
+            model_name = 'gpt-3.5-turbo-1106'
+        openai_start_time = time.time()
+        result = create_chat_response(messages, model_name=model_name)
+        openai_endtime = time.time()
+        FUTURE_TENSE_PROMPT_ENABLE = 1
+        if (prompt_type=="suggested_solution" or prompt_type=="suggested_action") and FUTURE_TENSE_PROMPT_ENABLE:
+            response_json = result.get_json() 
+            response_text = response_json['answer'] 
+            json_data_string = get_json_data("prompt-config.json")
+            suggestion_prompt = json_data_string.get("FUTURE_TENSE_PROMPT", "").format(sentences=response_text)
+            suggestion_response = create_chat_response(messages=[{"role": "user", "content": suggestion_prompt}], model_name='gpt-3.5-turbo-1106')
+            end_time = time.time()  
+            first_openai_time = openai_endtime - openai_start_time
+            total_openai_time = end_time - openai_start_time
+            total_time = end_time - api_start_time
+            print(f"first openai call time: {first_openai_time} seconds")
+            print(f"total openai time: {total_openai_time} seconds")
+            print(f"Total API time: {total_time} seconds")
+            return suggestion_response
+        else:
+            return result
 
+   
 @app.route("/api/opportunity-list", methods=["GET"])
 @require_api_key
 @log_request_response
@@ -345,13 +397,25 @@ def get_action_list():
         conn = sqlite3.connect("action_data.db")
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT action.id, action.action_name, action_list.account_name, action_list.opportunity_id, action_list.category, action_list.category_id, action_list.priority, action_list.due_before
+            SELECT action.id, action.action_name, action.category, action.priority,
+                   action_list.account_name, action_list.due_before, action_list.opportunity_id, action.category_id,
+                   action_list.action_list_id
             FROM action
             INNER JOIN action_list ON action.id = action_list.action_id
         """)
         actions = cursor.fetchall()
         json_data = [
-            {"action_id": action[0], "action_name": action[1], "account_name": action[2], "opportunity_id":action[3], "category": action[4], "category_id": action[5], "priority": action[6], "due_before": action[7]}
+            {
+                "action_id": action[0],
+                "action_name": action[1],
+                "category": action[2], 
+                "priority": action[3],  
+                "account_name": action[4],
+                "due_before": action[5],
+                "opportunity_id": action[6],
+                "category_id": action[7],
+                "action_list_id": action[8]
+            }
             for action in actions
         ]
         return jsonify(json_data)
@@ -361,6 +425,84 @@ def get_action_list():
         if conn:
             conn.close()
 
+@app.route("/action-list", methods=["DELETE"])
+@require_api_key
+@log_request_response
+def delete_action():
+    action_list_id = request.args.get("action_list_id")
+    if not action_list_id:
+        return jsonify({'error': 'action_list_id is required'}), 400
+    try:
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM action_list WHERE action_list_id = ?", (action_list_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Action list item deleted successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 200
+        
+@app.route('/api/suggested-action-add-to-action-list', methods=['POST'])
+@require_api_key
+@log_request_response
+def save_actions():
+    try:
+        data = request.get_json()
+        action_name = data.get('action_name')
+        account_name = data.get('opportunity_name')
+        opportunity_id = data.get('opportunity_id')
+        category = data.get('category', "Suggested action")
+        category_id = data.get('category_id', 12)
+    except (KeyError, TypeError) as e:
+        return jsonify({"error": "Missing required fields in JSON body"}), 400
+    conn = sqlite3.connect('action_data.db')
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM action WHERE action_name = ?",
+                    (action_name,))
+        existing_action = cur.fetchone()
+
+        if existing_action:
+            action_id = existing_action[0]
+            cur.execute(
+                "SELECT * FROM action_list WHERE action_id = ? AND account_name = ?", (action_id, account_name))
+            existing_entry = cur.fetchone()
+
+            if existing_entry:
+                print(
+                    f"Action '{action_name}' already exists for account '{account_name}'")
+                conn.close()
+                return jsonify({'message': 'Action already exists for this account'}), 200
+
+            else:
+                try:
+                    cur.execute("INSERT INTO action_list (action_id, account_name, opportunity_id, due_before) VALUES (?, ?, ?, ?)",
+                                (action_id, account_name, opportunity_id, "05 Jun 2023"))
+                    conn.commit()
+                    print(
+                        f"Account '{account_name}' added to existing action '{action_name}'")
+                except sqlite3.Error as e:
+                    print(f"Error inserting account_name to action_list: {e}")
+                    conn.rollback()
+
+        else:
+            try:
+                cur.execute("INSERT INTO action (action_name, category, priority, category_id) VALUES (?, ?, ?, ?)",
+                            (action_name, category, "Low", category_id))
+                conn.commit()
+                action_id = cur.lastrowid
+
+                cur.execute("INSERT INTO action_list (action_id, account_name, opportunity_id, due_before) VALUES (?, ?, ?, ?)",
+                            (action_id, account_name, opportunity_id, "05 Jun 2023"))
+                conn.commit()
+                print("Data inserted successfully")
+            except sqlite3.Error as e:
+                conn.rollback()
+                return jsonify({'Error inserting action': e}), 200
+    finally:
+        conn.close()
+    return jsonify({'message': 'Data inserted or updated successfully'}), 201
+    
 @app.route('/update-config-file')
 def index():
     return render_template('file_upload.html')
