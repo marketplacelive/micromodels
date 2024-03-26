@@ -1,5 +1,5 @@
 from dotenv import load_dotenv
-from flask import Flask, request, Response, jsonify, render_template
+from flask import Flask, request, Response, jsonify, render_template, copy_current_request_context
 from flask_cors import CORS, cross_origin
 from functools import wraps
 import openai
@@ -17,7 +17,9 @@ import re
 from flask_swagger_ui import get_swaggerui_blueprint
 import yaml
 import time
+import itertools
 from flask import session
+import threading
 
 load_dotenv()
 
@@ -34,6 +36,8 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = secret_key
 
 CORS(app)
+
+db_name = "action_data_test.db"
 
 logging.basicConfig(level=logging.INFO)
 # Create a logger for your module
@@ -165,7 +169,7 @@ def get_email_template(request_data):
     return create_chat_response(messages, model_name=email_message_prompt_model)
 
 def connect_db():
-    conn = sqlite3.connect('action_data.db')
+    conn = sqlite3.connect(db_name)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -394,27 +398,28 @@ def get_meeting_objective():
 @log_request_response
 def get_action_list():
     try:
-        conn = sqlite3.connect("action_data.db")
+        request_data = request.args 
+        limit = request_data.get('limit', 10)
+        offset = request_data.get('offset', 0)
+        limit = int (limit)
+        offset = int (offset)
+        conn = connect_db()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT action.id, action.action_name, action.category, action.priority,
-                   action_list.account_name, action_list.due_before, action_list.opportunity_id, action.category_id,
-                   action_list.action_list_id
-            FROM action
-            INNER JOIN action_list ON action.id = action_list.action_id
-        """)
+            SELECT action_list.action_list_id, action_list.action_id, action_list.action_name, action_list.priority, action_list.category, action_list.category_id,
+                    action_list.account_name, action_list.opportunity_id, action_list.due_before FROM action_list LIMIT ? OFFSET ?""", (limit, offset))
         actions = cursor.fetchall()
         json_data = [
             {
-                "action_id": action[0],
-                "action_name": action[1],
-                "category": action[2], 
+                "action_list_id": action[0],
+                "action_id": action[1],
+                "action_name": action[2], 
                 "priority": action[3],  
-                "account_name": action[4],
-                "due_before": action[5],
-                "opportunity_id": action[6],
-                "category_id": action[7],
-                "action_list_id": action[8]
+                "category": action[4],
+                "category_id": action[5],
+                "account_name": action[6],
+                "opportunity_id": action[7],
+                "due_before":action[8]
             }
             for action in actions
         ]
@@ -455,10 +460,10 @@ def save_actions():
         category_id = data.get('category_id', 12)
     except (KeyError, TypeError) as e:
         return jsonify({"error": "Missing required fields in JSON body"}), 400
-    conn = sqlite3.connect('action_data.db')
+    conn = connect_db()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT * FROM action WHERE action_name = ?",
+        cur.execute("SELECT id FROM action WHERE action_name = ?",
                     (action_name,))
         existing_action = cur.fetchone()
 
@@ -467,42 +472,390 @@ def save_actions():
             cur.execute(
                 "SELECT * FROM action_list WHERE action_id = ? AND account_name = ?", (action_id, account_name))
             existing_entry = cur.fetchone()
-
             if existing_entry:
                 print(
                     f"Action '{action_name}' already exists for account '{account_name}'")
                 conn.close()
                 return jsonify({'message': 'Action already exists for this account'}), 200
 
-            else:
-                try:
-                    cur.execute("INSERT INTO action_list (action_id, account_name, opportunity_id, due_before) VALUES (?, ?, ?, ?)",
-                                (action_id, account_name, opportunity_id, "05 Jun 2023"))
-                    conn.commit()
-                    print(
-                        f"Account '{account_name}' added to existing action '{action_name}'")
-                except sqlite3.Error as e:
-                    print(f"Error inserting account_name to action_list: {e}")
-                    conn.rollback()
-
         else:
             try:
-                cur.execute("INSERT INTO action (action_name, category, priority, category_id) VALUES (?, ?, ?, ?)",
-                            (action_name, category, "Low", category_id))
+                cur.execute(
+                    "SELECT thread_id FROM thread WHERE opportunity_id = 'global';")
+                thread_id = cur.fetchone()
+                if not thread_id:
+                    return "None"
+                thread_id = thread_id[0]
+                action = {}
+                action['action'] = action_name
+                action['account'] = account_name
+                action['priority'] = "Low"
+                action['due_before'] = "Not Specified"
+                json_data_string = get_json_data("prompt-config.json")
+                action_list_add_new_across_opportunity_prompt = json_data_string.get(
+                    'ACTION_LIST_ADD_NEW_ACROSS_OPPORTUNITY_PROMPT')
+                cur.execute("DELETE FROM action;")
                 conn.commit()
-                action_id = cur.lastrowid
+                cur.execute("DELETE FROM action_list;")
+                conn.commit()
+                message = client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=action_list_add_new_across_opportunity_prompt.format(
+                        action=str(action))
+                )
+                run = client.beta.threads.runs.create(
+                    thread_id=thread_id,
+                    assistant_id="asst_7KKat0PEcHBgvQkwWauq2PQx"
+                )
+                while True:
+                    time.sleep(2)
+                    run_status = client.beta.threads.runs.retrieve(
+                        thread_id=thread_id,
+                        run_id=run.id
+                    )
+                    if run_status.status == 'completed':
+                        messages = client.beta.threads.messages.list(
+                            thread_id=thread_id
+                        )
+                        for msg in messages.data:
+                            role = msg.role
+                            response = msg.content[0].text.value
+                            if role.lower() == "assistant":
+                                response = eval(response)
+                                break
+                        break
+                if not response:
+                    return jsonify({'message': "None"})
+                elif isinstance(response[0], str):
+                    if response[0] == "None":
+                        return jsonify({'message': "None"})
+                    else:
+                        print("Yes i was here")
+                        response = eval(response[0])
+                elif isinstance(response[0], list):
+                    if len(response) > 1:
+                        response = list(itertools.chain.from_iterable(response))
+                    else:
+                        response = response[0]
+                for action in response:
+                    cur.execute("""INSERT INTO action (action_name, priority) VALUES (?, ?)""",
+                                   (action['action'], action['priority']))
+                    conn.commit()
+                    action_id = cur.lastrowid
+                    cur.execute("""INSERT INTO action_list (action_id, account_name, due_before, order_across_opportunity) VALUES (?, ?, ?, ?)""",
+                                   (action_id, action['account'], action['due_before'], action['order_across_opportunity']))
+                    conn.commit()
+                return jsonify({'message': response})
 
-                cur.execute("INSERT INTO action_list (action_id, account_name, opportunity_id, due_before) VALUES (?, ?, ?, ?)",
-                            (action_id, account_name, opportunity_id, "05 Jun 2023"))
-                conn.commit()
-                print("Data inserted successfully")
             except sqlite3.Error as e:
                 conn.rollback()
                 return jsonify({'Error inserting action': e}), 200
+    except Exception as e:
+        return jsonify({'error': e})
     finally:
         conn.close()
-    return jsonify({'message': 'Data inserted or updated successfully'}), 201
+    return jsonify({'message': 'Something went wrong! May be account name incorrect'}), 201
+
+#Chat assistant for action list
+@app.route('/api/assistant', methods=['POST'])
+@require_api_key
+def assistant(): 
+    try:
+        data = request.get_json()
+        user_prompt = data.get('question')
+        page_name = data.get('page_name',"")
+        opportunity_id = data.get('opportunity_id',"")
+        user_thread_id = data.get('thread_id', "")
+        #thread_id="thread_AKocGCwNa3MqYeh5oGyTccPo"
+        global_action_list_assistant = "asst_RbZ26FH1lz0vfuI6tPPUMBvp"
+        if user_thread_id == '':
+            if page_name == "action_list" or page_name == "accelerate":
+                conn = connect_db()
+                cursor = conn.cursor()
+                thread_id = cursor.execute(
+                "SELECT thread_id FROM thread WHERE opportunity_id = 'global'").fetchone()
+                if thread_id:
+                    user_thread_id = thread_id[0]
+                else:
+                    thread = client.beta.threads.create()
+                    user_thread_id = thread.id
+            elif page_name == "problem_points":
+                conn = connect_db()
+                cursor = conn.cursor()
+                thread_id = cursor.execute(
+                "SELECT thread_id FROM thread WHERE opportunity_id = "+opportunity_id).fetchone()
+                if thread_id:
+                    user_thread_id = thread_id[0]
+                else:
+                    thread = client.beta.threads.create()
+                    user_thread_id = thread.id
+
+        message = client.beta.threads.messages.create(
+            thread_id=user_thread_id,
+            role="user",
+            content=user_prompt
+        )
+        
+        run = client.beta.threads.runs.create(
+            thread_id=user_thread_id,
+            assistant_id=global_action_list_assistant
+        )
+        #print("thread_id"+user_thread_id)
+        while True:
+            time.sleep(2)
+            run_status = client.beta.threads.runs.retrieve(
+                thread_id=user_thread_id,
+                run_id=run.id
+            )
+            if run_status.status == 'completed':
+                messages = client.beta.threads.messages.list(
+                    thread_id=user_thread_id
+                )
+                for msg in messages.data:
+                    role = msg.role
+                    if role.lower() == 'assistant':
+                        content = msg.content[0].text.value
+                        break
+                return jsonify({'message': content,"thread_id":user_thread_id}), 201
+    except Exception as e:
+        return jsonify({'error': str(e)})
+
+
+def get_action_items(opportunity_id, opportunity):
+    json_data_string = get_json_data("prompt-config.json")
+    # model_name = json_data_string.get(
+    #     'ACTION_LIST_PROMPT_MODEL', "")
+    action_list_prompt = json_data_string.get(
+        'ACTION_LIST_PROMPT')
+    action_list_order_inside_opportunity_prompt = json_data_string.get(
+            'ACTION_LIST_ORDER_INSIDE_OPPORTUNITY_PROMPT')    
+    print("opportunity_id")    
+    print(opportunity_id)
+    sales_notes = get_sales_notes(opportunity_id)
+    print("sales_notes")
+    print(sales_notes)
+    opportunity_assistant = "asst_7oAfmyIa2QBBF9LYNpfsCzID"
+    action_list_prompt = action_list_prompt.format(sales_notes=sales_notes, opportunity=opportunity, opportunity_id=opportunity_id)
+    conn = connect_db()
+    cursor = conn.cursor()
+    thread_id = cursor.execute(
+                "SELECT thread_id FROM thread WHERE opportunity_id = ?", (opportunity_id,)).fetchone()
+    if thread_id:
+        thread_id = thread_id[0]
+    else:
+        thread = client.beta.threads.create()
+        thread_id = thread.id
+        cursor.execute(
+            "INSERT INTO Thread (opportunity_id, thread_id) VALUES (?, ?)", (opportunity_id, thread_id))
+        conn.commit()
+
+    message = client.beta.threads.messages.create(
+        thread_id=thread_id,
+        role="user",
+        content=action_list_prompt
+    )
+    run = client.beta.threads.runs.create(
+        thread_id=thread_id,
+        assistant_id=opportunity_assistant
+    )
+    content = create_assistant_response(message, run)
     
+    if content.lower() == 'none':
+        return 'None'
+
+    message = client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=action_list_order_inside_opportunity_prompt
+                )
+    run = client.beta.threads.runs.create(
+        thread_id=thread_id,
+        assistant_id=opportunity_assistant
+    )
+    content = create_assistant_response(message, run)
+    return content
+
+def create_assistant_response(message, run):
+    while True:
+        time.sleep(2)
+        run_status = client.beta.threads.runs.retrieve(
+            thread_id=message.thread_id,
+            run_id=run.id
+        )
+        if run_status.status == 'completed':
+            messages = client.beta.threads.messages.list(
+                thread_id=message.thread_id
+            )
+            for msg in messages.data:
+                role = msg.role
+                content = msg.content[0].text.value
+                if role.lower() == "assistant":
+                    return content
+                
+def get_action_list_order_across_opportunity(action_list):
+    json_data_string = get_json_data("prompt-config.json")
+    global_action_list_assistant = "asst_RbZ26FH1lz0vfuI6tPPUMBvp"
+    conn = connect_db()
+    cursor = conn.cursor()
+    thread_id = cursor.execute("SELECT thread_id FROM thread WHERE opportunity_id = 'global'").fetchone()
+    if thread_id:
+        thread_id = thread_id[0]
+    else:
+        thread = client.beta.threads.create()
+        thread_id = thread.id
+        cursor.execute("INSERT INTO Thread (opportunity_id, thread_id) VALUES ('global', ?)", (thread_id,))
+        conn.commit()
+    action_list_order_across_opportunity_prompt = json_data_string.get(
+            'ACTION_LIST_ORDER_ACROSS_OPPORTUNITY_PROMPT')
+    # model_name = json_data_string.get('ACTION_LIST_PROMPT_MODEL', "")
+    action_list_order_across_opportunity_prompt = action_list_order_across_opportunity_prompt.format(
+            action_list=action_list)
+    message = client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=action_list_order_across_opportunity_prompt
+        )
+    run = client.beta.threads.runs.create(
+        thread_id=thread_id,
+        assistant_id=global_action_list_assistant
+    )
+    response = create_assistant_response(message, run)
+    print(response)
+    #json_index = response.find("json")
+    #json_part = response[json_index + 4:-3]
+    response = eval(response)
+    return response
+                                
+@app.route('/api/create-action-list')
+@require_api_key
+#def start_task():
+    #@copy_current_request_context    
+def assistants_function_call():
+    action_list_assistant = "asst_oUKA4rjY215DBM61PdcjzVS6"
+    try:
+        # Step 2: Create a Thread
+        conn = connect_db()
+        cursor = conn.cursor()
+        thread = client.beta.threads.create()
+        # Step 3: Add a Message to a Thread
+
+        message = client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content='''Can you give the action items needed for Vodafone:'006Hs00001DHMVAIA5', Walmart:'006Hs00001DHMXyIAP', Siemens:'006Hs00001DHMV9IAP' opportunities? Final response
+                        should be a consolidated array from all tool functions. 
+                        Example: [\{\{'action':'First action to be taken', 'action_id':'12', 'priority':'Very High', 'category':'Email', 'category_id': '2', 'account': 'opportunity name 1', 'opportunity_id':'006Hs00001IUDnyIAH', 'due_before': '5 June 2023', 'order':'2', 'order_across_opportunity':'3'\}\}, 
+                        \{\{'action':'second action to be taken', 'action_id':'12', 'priority':'High', 'category':'Email', 'category_id': '2', 'account': 'opportunity name 2', 'opportunity_id':'006Hs00001IUDnyIAH', 'due_before': '5 June 2023', 'order':'2', 'order_across_opportunity':'4'\}\}]
+                        ONLY JSON IS ALLOWED as an answer. No explanation or other text is allowed. Avoid prefix like 'json', quotes etc.'''
+            )
+
+        # Step 4: Run the Assistant
+        run = client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=action_list_assistant,
+            instructions="Please address the user as sales agent"
+        )
+
+        print(run.model_dump_json(indent=4))
+
+        while True:
+            # Wait for 5 seconds
+            time.sleep(3)
+
+            # Retrieve the run status
+            run_status = client.beta.threads.runs.retrieve(
+                thread_id=thread.id,
+                run_id=run.id
+            )
+            print(run_status.model_dump_json(indent=4))
+
+            # If run is completed, get messages
+            if run_status.status == 'completed':
+                messages = client.beta.threads.messages.list(
+                    thread_id=thread.id
+                )
+                # Loop through messages and print content based on role
+                for msg in messages.data:
+                    role = msg.role
+                    content = msg.content[0].text.value
+                    if role.lower() == "assistant":
+                        response = get_action_list_order_across_opportunity(content)
+                        print(response)
+                        break
+                break
+            
+
+            elif run_status.status == 'requires_action':
+                print("Function Calling")
+                required_actions = run_status.required_action.submit_tool_outputs.model_dump()
+                print(required_actions)
+                tool_outputs = []
+                import json
+                for action in required_actions["tool_calls"]:
+                    func_name = action['function']['name']
+                    arguments = json.loads(action['function']['arguments'])  
+                    output = eval(func_name)(opportunity_id=arguments['opportunity_id'], opportunity=arguments['opportunity'])
+                    print("Fetched "+arguments['opportunity']+" action list....sleep for 5 seconds")
+                    time.sleep(5)
+                    tool_outputs.append({
+                        "tool_call_id": action['id'],
+                        "output": output
+                    })      
+                print("tool_outputs")    
+                print(tool_outputs)
+                print("Submitting outputs back to the Assistant...")
+                client.beta.threads.runs.submit_tool_outputs(
+                    thread_id=thread.id,
+                    run_id=run.id,
+                    tool_outputs=tool_outputs
+                )
+            else:
+                print("Waiting for the Assistant to process...")
+                time.sleep(5)
+    
+
+        #cursor.execute("DELETE FROM action;")
+        #conn.commit()
+        
+        if not response:
+            return jsonify({'message': "None"})
+        elif isinstance(response[0], str):
+            if response[0] == "None":
+                return jsonify({'message': "None"})
+            else:
+                response = eval(response[0])
+        elif isinstance(response[0], list):
+            if len(response) > 1:
+                response = list(itertools.chain.from_iterable(response))
+            else:
+                response = response[0]
+        actions = cursor.execute("SELECT * FROM action;").fetchall()
+        existing_actions = {action[0] for action in actions}
+        cursor.execute("DELETE FROM action_list;")
+        conn.commit()
+        for action in response:
+            action_name = action['action']
+            if action_name not in existing_actions:
+                cursor.execute("""INSERT INTO action (action_name, priority) VALUES (?, ?)""",
+                        (action['action'], action['priority']))
+                conn.commit()
+                action_id = cursor.lastrowid
+            else:
+                for item in actions:
+                    if item[1] == action_name:
+                        action_id = item[0]
+                        break
+            cursor.execute("""INSERT INTO action_list (action_id, action_name, priority, category, category_id, account_name, opportunity_id, due_before, order_inside_opportunity, order_across_opportunity) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (action['action_id'], action['action'], action['priority'], action['category'], action['category_id'], action['account'], action['opportunity_id'], action['due_before'], action['order'], action['order_across_opportunity']))
+        return jsonify({'message': response})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+    #thread = threading.Thread(target=assistants_function_call)
+    #thread.start()
+    #return 'Started creating action list in the background, please wait for few minutes!!'
+
+        
 @app.route('/update-config-file')
 def index():
     return render_template('file_upload.html')
