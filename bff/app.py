@@ -446,15 +446,45 @@ def get_action_list():
 @log_request_response
 def delete_action():
     action_list_id = request.args.get("action_list_id")
+    global_action_list_assistant = "asst_RbZ26FH1lz0vfuI6tPPUMBvp"
     if not action_list_id:
         return jsonify({'error': 'action_list_id is required'}), 400
     try:
         conn = connect_db()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM action_list WHERE action_list_id = ?", (action_list_id,))
+        action_list_record = cursor.execute(
+            "SELECT * FROM action_list WHERE action_list_id = ?", (action_list_id,)).fetchone()
+        action_dict = {}
+        action_dict['action'] = action_list_record[2]
+        action_dict['priority'] = action_list_record[3]
+        action_dict['category'] = action_list_record[4]
+        action_dict['account'] = action_list_record[6]
+        action_dict['opportunity_id'] = action_list_record[7]
+        action_dict['due_before'] = action_list_record[8]
+        action_dict['order'] = action_list_record[9]
+        action_dict['order_across_opportunity'] = action_list_record[10]
+        cursor.execute(
+            "DELETE FROM action_list WHERE action_list_id = ?", (action_list_id,))
         conn.commit()
+        thread_id = cursor.execute(
+                    "SELECT thread_id FROM thread WHERE opportunity_id = 'global'").fetchone()
         conn.close()
-        return jsonify({'message': 'Action list item deleted successfully'}), 200
+        if thread_id:
+            thread_id = thread_id[0]
+        else:
+            return jsonify({'message': 'Global thread does not exist.'}), 200
+        message = client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content='''Please remove the action item enclosed in angle brackets <{action_item}> from your previous response on action items orders across opportunity. It is no longer required for {account} opportunity. Give the updated response in the same format you have given before. Avoid prefixes in responses such as json, yaml enclosed in backticks.'''.format(action_item=action_dict, account=action_dict['account'])
+        )
+        run = client.beta.threads.runs.create(
+            thread_id=thread_id,
+            assistant_id=global_action_list_assistant,
+            instructions="Please address the user as sales agent"
+        )
+        response = create_assistant_response(message, run)
+        return jsonify({'message': "Deleted action list successfully.Updated Action List:"+str(eval(response))}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 200
         
@@ -956,6 +986,7 @@ def get_opportunity_status():
 
 @app.route('/api/list-run-status')
 @require_api_key
+@log_request_response
 def list_run_status():
     data = get_opportunity_status()
     response = []
@@ -971,6 +1002,7 @@ def list_run_status():
 
 @app.route('/api/action/notes-summary')
 @require_api_key
+@log_request_response
 def action_notes_summary():
     opportunity_assistant = "asst_7oAfmyIa2QBBF9LYNpfsCzID"
     try:
@@ -1000,7 +1032,34 @@ def action_notes_summary():
         return jsonify({"message":eval(response)})
     except Exception as e:
         return jsonify({"error": str(e)})
-    
+
+@app.route('/api/save-action-item-notes', methods=['POST'])
+@require_api_key
+@log_request_response
+def save_sales_notes_to_db():
+    try:
+        data = request.get_json()
+        required_fields = ['opportunity_id', 'notes', 'action_id']
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            return jsonify({'error': f"Missing required fields: {', '.join(missing_fields)}"})
+        opportunity_id = data.get('opportunity_id')
+        date = data.get('date')
+        notes = data.get('notes')
+        action_id = data.get('action_id')
+        if not action_id or not notes or not opportunity_id:
+            return jsonify({'message': 'Fields cannot be empty.'})
+        conn = connect_db()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO action_notes (opportunity_id, date, notes, action_id) VALUES (?, ?, ?, ?)", (opportunity_id, date, notes, action_id))
+        conn.commit()
+        conn.close()
+        return jsonify({'message': 'Data inserted successfully'})
+    except sqlite3.IntegrityError:
+        return jsonify({'message': 'Note already exists.'})
+    except Exception as e:
+        return jsonify({'error': str(e)})
+        
 @app.route('/update-config-file')
 def index():
     return render_template('file_upload.html')
