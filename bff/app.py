@@ -501,7 +501,7 @@ def save_actions():
         category_id = "12"
     except (KeyError, TypeError) as e:
         return jsonify({"error": "Missing required fields in JSON body"}), 400
-    
+   
     #actions_list = action_names.split(", ")
     actions_list_base = actions_list.copy()
     conn = connect_db()
@@ -513,11 +513,10 @@ def save_actions():
         if existing_action:
             actions_list_base.remove(action)
     if not actions_list_base:
-        conn.close() 
+        conn.close()
         return jsonify({'message': 'Action already exists for this account'}), 200
-        
+       
     try:
-        
         model_name = "gpt-3.5-turbo-1106"
         new_actions_list = []
         summarized_action=""
@@ -532,40 +531,55 @@ def save_actions():
                 result = create_chat_response(messages, model_name)
                 response_json = result.get_json()
                 summarized_action = response_json['answer']
-            new_actions_list.append({"account":account_name, 
-                                            "action":summarized_action, 
+            new_actions_list.append({"account":account_name,
+                                            "action":summarized_action,
                                             "category":category,
                                             "category_id": category_id,
                                             "due_before":"Not Specified",
                                             "opportunity_id": opportunity_id,
                                             "priority":"Low",
                                             "original_suggested_action":action
-                                            })
-                
+                                            })        
         cur.execute(
             "SELECT thread_id FROM thread WHERE opportunity_id = 'global';")
         thread_id = cur.fetchone()
+        actions_list_from_db = cur.execute("SELECT * FROM action_list;").fetchall()
+        action_list = []
+        for action in actions_list_from_db:
+            action_dict = {}
+            action_dict["action"] = action[2]
+            action_dict["action_id"] = action[1]
+            action_dict["priority"] = action[3]
+            action_dict["category"] = action[4]
+            action_dict["category_id"] = action[5]
+            action_dict["opportunity_id"] = action[7]
+            action_dict["account"] = action[6]
+            action_dict["due_before"] = action[8]
+            action_dict["order"] = action[10]
+            action_dict["order_across_opportunity"] = action[9]
+            action_list.append(action_dict)
         if not thread_id:
             return "None"
         thread_id = thread_id[0]
-                
+               
         json_data_string = get_json_data("prompt-config.json")
         action_list_add_new_across_opportunity_prompt = json_data_string.get(
             'ACTION_LIST_ADD_NEW_ACROSS_OPPORTUNITY_PROMPT')
         action_list_add_new_across_opportunity_prompt = action_list_add_new_across_opportunity_prompt.format(
-                suggested_action_list=str(new_actions_list))
-        
+                suggested_actions=new_actions_list, action_list=action_list)
+       
         message = client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
             content=action_list_add_new_across_opportunity_prompt
         )
-        
+       
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
             assistant_id="asst_RbZ26FH1lz0vfuI6tPPUMBvp"
         )
         response = create_assistant_response(message, run)
+        print(response)
         if not response:
             return jsonify({'message': "None"})
         elif isinstance(response[0], str):
@@ -579,7 +593,7 @@ def save_actions():
             else:
                 response = response[0]
         cur.execute("DELETE FROM action_list;")
-        
+       
         for action in response:
             if 'action_id' not in action:
                 action['action_id'] = 0
@@ -757,12 +771,12 @@ def get_action_items(opportunity_id, opportunity):
 
 def create_assistant_response(message, run):
     while True:
+        time.sleep(5)
         run_status = client.beta.threads.runs.retrieve(
             thread_id=message.thread_id,
             run_id=run.id
         )
         print("..... Called create_assistant_response - client.beta.threads.runs.retrieve.. sleep for 5 seconds.....")
-        time.sleep(5)
         if run_status.status == 'completed':
             print("..... create_assistant_response -  run completed.....")
             messages = client.beta.threads.messages.list(
@@ -1013,7 +1027,6 @@ def action_notes_summary():
         cursor = conn.cursor()
         thread_id = cursor.execute(
         "SELECT thread_id FROM thread WHERE opportunity_id = ?", (opportunity_id,)).fetchone()
-        print(thread_id)
         if thread_id:
             thread_id = thread_id[0]
         else:
@@ -1028,15 +1041,20 @@ def action_notes_summary():
             assistant_id=opportunity_assistant,
             instructions="Please address the user as sales agent"
         )
-        response = create_assistant_response(message, run)
-        return jsonify({"message":eval(response)})
+        action_id = cursor.execute("SELECT action_id FROM action_list WHERE opportunity_id = ? and action_name = ?", (opportunity_id, action)).fetchone()
+        response = eval(create_assistant_response(message, run))
+        if action_id:
+            action_id = action_id[0]
+            action_notes = cursor.execute("SELECT notes FROM action_notes WHERE opportunity_id = ? and action_id = ?", (opportunity_id, action_id)).fetchall()
+            response = response + [action_note for element in action_notes for action_note in element]
+        return jsonify({"message":response})
     except Exception as e:
         return jsonify({"error": str(e)})
 
 @app.route('/api/save-action-item-notes', methods=['POST'])
 @require_api_key
 @log_request_response
-def save_sales_notes_to_db():
+def save_action_item_notes():
     try:
         data = request.get_json()
         required_fields = ['opportunity_id', 'notes', 'action_id']
