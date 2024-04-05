@@ -1040,31 +1040,37 @@ def action_notes_summary():
         request_data = request.args
         opportunity_id = request_data['opportunity_id']
         action = request_data['action']
+        action_id = request_data['action_id']
         conn = connect_db()
         cursor = conn.cursor()
         thread_id = cursor.execute(
-        "SELECT thread_id FROM thread WHERE opportunity_id = ?", (opportunity_id,)).fetchone()
+            "SELECT thread_id FROM thread WHERE opportunity_id = ?", (opportunity_id,)).fetchone()
         if thread_id:
             thread_id = thread_id[0]
         else:
-            return jsonify({"message":"No thread exists for this opportunity_id"})
+            return jsonify({"message": "No thread exists for this opportunity_id"})
         message = client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content='''The following text enclosed in angle brackets is an action item in this opportunity based on sales notes provided earlier. <{action_item}>.\nBriefly explain why this action is needed? Provide 2-3 points based on the sales notes. Response should be given as python list. Avoid prefixes in the responses such as json, yaml enclosed in triple backticks.'''.format(action_item=action)
+            content='''The following text enclosed in angle brackets is an action item in this opportunity based on sales notes provided earlier. <{action_item}>.\nBriefly explain why this action is needed? Provide 2-3 points based on the sales notes. Also append the summary of the complete sales notes already provided in the earlier prompt in two or three points. Response should be in a single python list. No triple Backticks (```) allowed in response and no other charectors are permitted outsided python list.'''.format(
+                action_item=action)
         )
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
             assistant_id=opportunity_assistant,
             instructions="Please address the user as sales agent"
         )
-        action_id = cursor.execute("SELECT action_id FROM action_list WHERE opportunity_id = ? and action_name = ?", (opportunity_id, action)).fetchone()
+        #action_id = cursor.execute(
+        #    "SELECT action_id FROM action_list WHERE opportunity_id = ? and action_name = ?", (opportunity_id, action)).fetchone()
         response = eval(create_assistant_response(message, run))
-        if action_id:
-            action_id = action_id[0]
-            action_notes = cursor.execute("SELECT notes FROM action_notes WHERE opportunity_id = ? and action_id = ?", (opportunity_id, action_id)).fetchall()
-            response = response + [action_note for element in action_notes for action_note in element]
-        return jsonify({"message":response})
+        #if action_id:
+        #    action_id = action_id[0]
+        
+        action_notes = cursor.execute(
+            "SELECT notes FROM action_notes WHERE opportunity_id = ? and action_id = ?", (opportunity_id, action_id)).fetchall()
+        response = response + \
+            [action_note for element in action_notes for action_note in element]
+        return jsonify({"message": response})
     except Exception as e:
         return jsonify({"error": str(e)})
 
