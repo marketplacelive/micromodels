@@ -21,6 +21,8 @@ import itertools
 from flask import session
 import threading
 from datetime import datetime
+#from typing_extensions import override
+#from openai import AssistantEventHandler
 
 #from tasks import flask_app, long_running_task #-Line 1
 #from celery.result import AsyncResult#-Line 2
@@ -502,7 +504,6 @@ def save_actions():
     except (KeyError, TypeError) as e:
         return jsonify({"error": "Missing required fields in JSON body"}), 400
    
-    #actions_list = action_names.split(", ")
     actions_list_base = actions_list.copy()
     conn = connect_db()
     cur = conn.cursor()
@@ -573,13 +574,7 @@ def save_actions():
             role="user",
             content=action_list_add_new_across_opportunity_prompt
         )
-       
-        run = client.beta.threads.runs.create(
-            thread_id=thread_id,
-            assistant_id="asst_RbZ26FH1lz0vfuI6tPPUMBvp"
-        )
-        response = create_assistant_response(message, run)
-        print(response)
+        response = stream_assistant_response(thread_id)
         if not response:
             return jsonify({'message': "None"})
         elif isinstance(response[0], str):
@@ -809,6 +804,17 @@ def create_assistant_response_with_timeout(message, run, opportunity_id):
                     return content
         current_time = time.time()
 
+def stream_assistant_response(thread_id):
+    with client.beta.threads.runs.stream(
+        thread_id=thread_id,
+        assistant_id="asst_RbZ26FH1lz0vfuI6tPPUMBvp",
+        instructions="Please address the user as Sales agent",
+        ) as stream:
+        stream_response = ""
+        for text in stream.text_deltas:
+            stream_response += text
+    return stream_response
+
 def insert_run_status(opportunity_id, status):
     conn = connect_db()
     cursor = conn.cursor()
@@ -824,12 +830,29 @@ def update_run_status(opportunity_id, status):
     return
 
 def get_action_list_order_across_opportunity(action_list):
+    action_list = eval(action_list)
     print("..... get_action_list_order_across_opportunity function call .....")
     json_data_string = get_json_data("prompt-config.json")
     global_action_list_assistant = "asst_RbZ26FH1lz0vfuI6tPPUMBvp"
     conn = connect_db()
     cursor = conn.cursor()
     thread_id = cursor.execute("SELECT thread_id FROM thread WHERE opportunity_id = 'global'").fetchone()
+    suggested_actions = cursor.execute("SELECT * FROM action_list where category='Suggested action';").fetchall()
+    suggested_action_list = []
+    for suggested_action in suggested_actions:
+        action_dict = {}
+        action_dict["action"] = suggested_action[2]
+        action_dict["action_id"] = suggested_action[1]
+        action_dict["priority"] = suggested_action[3]
+        action_dict["category"] = suggested_action[4]
+        action_dict["category_id"] = suggested_action[5]
+        action_dict["opportunity_id"] = suggested_action[7]
+        action_dict["account"] = suggested_action[6]
+        action_dict["due_before"] = suggested_action[8]
+        action_dict["order"] = suggested_action[10]
+        action_dict["order_across_opportunity"] = suggested_action[9]
+        suggested_action_list.append(action_dict)
+    action_list.extend(suggested_action_list)
     if thread_id:
         thread_id = thread_id[0]
     else:
@@ -861,30 +884,26 @@ def get_action_list_order_across_opportunity(action_list):
 @app.route('/api/create-action-list')
 @require_api_key
 @log_request_response
-# def start_task():
-# @copy_current_request_context
 def assistants_function_call():
     action_list_assistant = "asst_oUKA4rjY215DBM61PdcjzVS6"
     try:
-        # Step 2: Create a Thread
+        opportunities = request.args.get('opportunities')
         conn = connect_db()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM opportunity_status;")
         conn.commit()
         thread = client.beta.threads.create()
-        # Step 3: Add a Message to a Thread
         start_time = time.time()
         message = client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
-            content='''Can you give the action items needed for Walmart:'006Hs00001DHMXyIAP' opportunities? Final response
+            content='''Can you give the action items needed for {opportunities} opportunities? Final response
                         should be a consolidated array from all tool functions.
-                        Example: [\{\{'action':'First action to be taken', 'action_id':'12', 'priority':'Very High', 'category':'Email', 'category_id': '2', 'account': 'opportunity name 1', 'opportunity_id':'006Hs00001IUDnyIAH', 'due_before': '5 June 2023', 'order':'2', 'order_across_opportunity':'3'\}\},
-                        \{\{'action':'second action to be taken', 'action_id':'12', 'priority':'High', 'category':'Email', 'category_id': '2', 'account': 'opportunity name 2', 'opportunity_id':'006Hs00001IUDnyIAH', 'due_before': '5 June 2023', 'order':'2', 'order_across_opportunity':'4'\}\}]
-                        ONLY JSON IS ALLOWED as an answer. No explanation or other text is allowed. Avoid prefix like 'json', quotes etc.'''
+                        Example: [{{'action':'First action to be taken', 'action_id':'12', 'priority':'Very High', 'category':'Email', 'category_id': '2', 'account': 'opportunity name 1', 'opportunity_id':'006Hs00001IUDnyIAH', 'due_before': '5 June 2023', 'order':'2', 'order_across_opportunity':'3'}},
+                        {{'action':'second action to be taken', 'action_id':'12', 'priority':'High', 'category':'Email', 'category_id': '2', 'account': 'opportunity name 2', 'opportunity_id':'006Hs00001IUDnyIAH', 'due_before': '5 June 2023', 'order':'2', 'order_across_opportunity':'4'}}]
+                        ONLY JSON IS ALLOWED as an answer. No explanation or other text is allowed. Avoid prefix like 'json', quotes etc.'''.format(opportunities=opportunities)
         )
-
-        # Step 4: Run the Assistant
+        print("reahced here")
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=action_list_assistant,
@@ -894,7 +913,6 @@ def assistants_function_call():
         print(run.model_dump_json(indent=4))
 
         while True:
-            # Wait for 5 seconds
             time.sleep(3)
 
             # Retrieve the run status
@@ -966,8 +984,7 @@ def assistants_function_call():
                 response = response[0]
         actions = cursor.execute("SELECT * FROM action;").fetchall()
         existing_actions = {action[0] for action in actions}
-        cursor.execute("DELETE FROM action_list;")
-        #conn.commit()
+        cursor.execute("DELETE FROM action_list WHERE category != 'Suggested action';")
         for action in response:
             action_name = action['action']
             if action_name not in existing_actions:
@@ -1144,6 +1161,7 @@ def swagger():
     with open('swagger.yaml', 'r') as f:
         yaml_content = yaml.safe_load(f)
         return jsonify(yaml_content)
+
 '''
 @flask_app.post("/trigger_task")
 def start_task() -> dict[str, object]:
