@@ -21,8 +21,7 @@ import itertools
 from flask import session
 import threading
 from datetime import datetime
-#from typing_extensions import override
-#from openai import AssistantEventHandler
+from googleapiclient.discovery import build
 
 #from tasks import flask_app, long_running_task #-Line 1
 #from celery.result import AsyncResult#-Line 2
@@ -418,7 +417,7 @@ def get_action_list():
             print(limit)
         cursor.execute("""
             SELECT action_list.action_list_id, action_list.action_id, action_list.action_name, action_list.priority, action_list.category, action_list.category_id,
-                    action_list.account_name, action_list.opportunity_id, action_list.due_before FROM action_list LIMIT ? OFFSET ?""", (limit, offset))
+                    action_list.account_name, action_list.opportunity_id, action_list.due_before FROM action_list order by order_across_opportunity LIMIT ? OFFSET ?""", (limit, offset))
         actions = cursor.fetchall()
         cursor.execute("SELECT COUNT(*) FROM action_list")
         count = cursor.fetchone()[0]
@@ -449,6 +448,8 @@ def get_action_list():
 def delete_action():
     action_list_id = request.args.get("action_list_id")
     global_action_list_assistant = "asst_RbZ26FH1lz0vfuI6tPPUMBvp"
+    json_data_string = get_json_data("prompt-config.json")
+    remove_action_item_prompt = json_data_string.get("REMOVE_ACTION_ITEM_PROMPT", "")
     if not action_list_id:
         return jsonify({'error': 'action_list_id is required'}), 400
     try:
@@ -475,10 +476,11 @@ def delete_action():
             thread_id = thread_id[0]
         else:
             return jsonify({'message': 'Global thread does not exist.'}), 200
+        remove_action_item_prompt = remove_action_item_prompt.format(action_item=action_dict, account=action_dict['account'])
         message = client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content='''Please remove the action item enclosed in angle brackets <{action_item}> from your previous response on action items orders across opportunity. It is no longer required for {account} opportunity. Give the updated response in the same format you have given before. Avoid prefixes in responses such as json, yaml enclosed in backticks.'''.format(action_item=action_dict, account=action_dict['account'])
+            content=remove_action_item_prompt
         )
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
@@ -888,22 +890,22 @@ def assistants_function_call():
     action_list_assistant = "asst_oUKA4rjY215DBM61PdcjzVS6"
     try:
         opportunities = request.args.get('opportunities')
+        json_data_string = get_json_data("prompt-config.json")
+        create_action_list_prompt = json_data_string.get(
+            'CREATE_ACTION_LIST_PROMPT')
         conn = connect_db()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM opportunity_status;")
         conn.commit()
         thread = client.beta.threads.create()
         start_time = time.time()
+        create_action_list_prompt = create_action_list_prompt.format(opportunities = opportunities)
         message = client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
-            content='''Can you give the action items needed for {opportunities} opportunities? Final response
-                        should be a consolidated array from all tool functions.
-                        Example: [{{'action':'First action to be taken', 'action_id':'12', 'priority':'Very High', 'category':'Email', 'category_id': '2', 'account': 'opportunity name 1', 'opportunity_id':'006Hs00001IUDnyIAH', 'due_before': '5 June 2023', 'order':'2', 'order_across_opportunity':'3'}},
-                        {{'action':'second action to be taken', 'action_id':'12', 'priority':'High', 'category':'Email', 'category_id': '2', 'account': 'opportunity name 2', 'opportunity_id':'006Hs00001IUDnyIAH', 'due_before': '5 June 2023', 'order':'2', 'order_across_opportunity':'4'}}]
-                        ONLY JSON IS ALLOWED as an answer. No explanation or other text is allowed. Avoid prefix like 'json', quotes etc.'''.format(opportunities=opportunities)
+            content=create_action_list_prompt
         )
-        print("reahced here")
+        #print("reahced here")
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
             assistant_id=action_list_assistant,
@@ -1041,6 +1043,9 @@ def action_notes_summary():
         opportunity_id = request_data['opportunity_id']
         action = request_data['action']
         action_id = request_data['action_id']
+        json_data_string = get_json_data("prompt-config.json")
+        _action_item_notes_summary_prompt = json_data_string.get(
+            'ACTION_ITEM_NOTE_SUMMARY_PROMPT')
         conn = connect_db()
         cursor = conn.cursor()
         thread_id = cursor.execute(
@@ -1049,11 +1054,11 @@ def action_notes_summary():
             thread_id = thread_id[0]
         else:
             return jsonify({"message": "No thread exists for this opportunity_id"})
+        action_item_notes_summary_prompt = _action_item_notes_summary_prompt.format(action_item=action)
         message = client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content='''The following text enclosed in angle brackets is an action item in this opportunity based on sales notes provided earlier. <{action_item}>.\nBriefly explain why this action is needed? Provide 2-3 points based on the sales notes. Also append the summary of the complete sales notes already provided in the earlier prompt in two or three points. Response should be in a single python list. No triple Backticks (```) allowed in response and no other charectors are permitted outsided python list.'''.format(
-                action_item=action)
+            content=action_item_notes_summary_prompt
         )
         run = client.beta.threads.runs.create(
             thread_id=thread_id,
@@ -1100,7 +1105,42 @@ def save_action_item_notes():
         return jsonify({'message': 'Note already exists.'})
     except Exception as e:
         return jsonify({'error': str(e)})
+
+@app.route('/api/get-latest-news')
+@require_api_key
+@log_request_response
+def get_latest_news():
+    try:
+        opportunity = request.args.get('opportunity')
+        if not opportunity:
+            return jsonify({"error": "Missing 'opportunity' parameter."})
+
+        developer_key = os.getenv('GOOGLE_API_KEY')
+        search_engine_id = os.getenv("SEARCH_ENGINE_ID")
+        service = build("customsearch", "v1", developerKey=developer_key)
+
+        response = service.cse().list(
+            q=f"Latest news about {opportunity}",
+            cx=search_engine_id,
+        ).execute()
+
+        news_list = response.get('items', [])[:3]
         
+        results = [
+            {
+                "title": news["title"],
+                "date": news["snippet"].split('...')[0].strip(),
+                "image_src": news["pagemap"].get("metatags", [{}])[0].get("og:image"),
+                "news_link": news['link']
+            }
+            for news in news_list
+        ]
+
+        return jsonify({"message": results})
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+            
 @app.route('/update-config-file')
 def index():
     return render_template('file_upload.html')
